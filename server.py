@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import smtplib
 import uuid
@@ -446,8 +447,12 @@ def write_backup(data: dict) -> None:
 def order_total(order: dict) -> dict:
     subtotal = sum(float(line.get("qty") or 0) * float(line.get("rate") or 0) for line in order.get("labor", []) + order.get("parts", []))
     parts_subtotal = sum(float(line.get("qty") or 0) * float(line.get("rate") or 0) for line in order.get("parts", []))
-    tax = parts_subtotal * TAX_RATE
-    return {"subtotal": subtotal, "tax": tax, "total": subtotal + tax}
+    tax = round_currency(parts_subtotal * TAX_RATE)
+    return {"subtotal": round_currency(subtotal), "tax": tax, "total": round_currency(subtotal + tax)}
+
+
+def round_currency(value: float) -> float:
+    return math.floor((value * 100) + 0.5) / 100
 
 
 def format_money(value: float) -> str:

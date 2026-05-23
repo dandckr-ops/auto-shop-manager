@@ -102,6 +102,10 @@ function money(value) {
   }).format(Number(value) || 0);
 }
 
+function roundCurrency(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -287,11 +291,13 @@ function renderOrders() {
         </div>
         <span class="muted">${escapeHtml(vehicleLabel(vehicle))}</span>
         <span>${escapeHtml(order.concern || "No concern entered")}</span>
-        <strong>${money(orderTotal(order).total)}</strong>
+        <span class="muted">Subtotal ${money(orderTotal(order).subtotal)} - Tax ${money(orderTotal(order).tax)}</span>
+        <strong>Total ${money(orderTotal(order).total)}</strong>
         <div class="item-actions">
           <button class="secondary small" data-action="edit-order" data-id="${order.id}">Edit</button>
           <button class="secondary small" data-action="duplicate-order" data-id="${order.id}">Duplicate</button>
           <button class="secondary small" data-action="email-order" data-id="${order.id}">Email</button>
+          <button class="danger small" data-action="delete-order" data-id="${order.id}">Delete</button>
         </div>
       </article>
     `;
@@ -441,8 +447,12 @@ function orderTotal(order) {
     .reduce((sum, line) => sum + (Number(line.qty) || 0) * (Number(line.rate) || 0), 0);
   const partsSubtotal = (order.parts || [])
     .reduce((sum, line) => sum + (Number(line.qty) || 0) * (Number(line.rate) || 0), 0);
-  const tax = partsSubtotal * TAX_RATE;
-  return { subtotal, tax, total: subtotal + tax };
+  const tax = roundCurrency(partsSubtotal * TAX_RATE);
+  return {
+    subtotal: roundCurrency(subtotal),
+    tax,
+    total: roundCurrency(subtotal + tax)
+  };
 }
 
 function updateTotals() {
@@ -585,6 +595,9 @@ function handleListClick(event) {
     saveState();
     render();
   }
+  if (action === "delete-order") {
+    deleteOrder(id);
+  }
   if (action === "email-order") {
     emailOrder(id, button);
   }
@@ -620,6 +633,20 @@ function handleListClick(event) {
     saveState();
     render();
   }
+}
+
+function deleteOrder(orderId) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (!order) return;
+  const customer = state.customers.find((entry) => entry.id === order.customerId);
+  const label = customer?.name ? `${customer.name}'s ${order.status}` : order.status;
+  if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+  state.orders = state.orders.filter((entry) => entry.id !== orderId);
+  if (document.querySelector("#orderId").value === orderId) {
+    clearOrderForm();
+  }
+  saveState();
+  render();
 }
 
 async function emailOrder(orderId, button) {
