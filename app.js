@@ -410,6 +410,7 @@ function clearOrderForm() {
   document.querySelector("#orderStatus").value = "Estimate";
   addLine("labor");
   addLine("part");
+  updateCurrentOrderActions();
   renderVehicleOptions();
 }
 
@@ -439,7 +440,13 @@ function fillOrderForm(order) {
   document.querySelector("#partLines").innerHTML = "";
   (order.labor?.length ? order.labor : [blankLine("labor")]).forEach((line) => addLine("labor", line));
   (order.parts?.length ? order.parts : [blankLine("part")]).forEach((line) => addLine("part", line));
+  updateCurrentOrderActions();
   setView("orders");
+}
+
+function updateCurrentOrderActions() {
+  const hasSavedOrder = Boolean(document.querySelector("#orderId").value);
+  document.querySelector("#deleteCurrentOrder").disabled = !hasSavedOrder;
 }
 
 function orderTotal(order) {
@@ -722,6 +729,10 @@ document.querySelector("#orderForm").addEventListener("submit", (event) => {
 
 document.querySelector("#clearOrderForm").addEventListener("click", clearOrderForm);
 document.querySelector("#printOrder").addEventListener("click", () => window.print());
+document.querySelector("#deleteCurrentOrder").addEventListener("click", () => {
+  const orderId = document.querySelector("#orderId").value;
+  if (orderId) deleteOrder(orderId);
+});
 document.querySelector("#partsSearchForm").addEventListener("submit", searchParts);
 
 document.querySelector("#clearCompletedParts").addEventListener("click", () => {
