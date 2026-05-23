@@ -275,11 +275,24 @@ textarea {
 }
 
 .list-item {
+  background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
   gap: 8px;
   padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.card-link:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 18px rgba(23, 32, 39, 0.08);
+}
+
+.card-link:focus-visible {
+  outline: 3px solid rgba(46, 128, 184, 0.28);
+  outline-offset: 2px;
 }
 
 .list-item-title {

@@ -180,7 +180,10 @@ function renderDashboard() {
               return `<div class="list-item"><strong>${escapeHtml(item.partName)}</strong><span class="muted">${escapeHtml(item.supplier)} - ${escapeHtml(item.status)}</span></div>`;
             }
             const customer = state.customers.find((entry) => entry.id === item.customerId);
-            return `<div class="list-item"><strong>${escapeHtml(item.status)} - ${escapeHtml(customer?.name || "Unknown")}</strong><span class="muted">${money(orderTotal(item).total)}</span></div>`;
+            return `<button type="button" class="list-item card-link" data-action="open-order" data-id="${item.id}">
+              <strong>${escapeHtml(item.status)} - ${escapeHtml(customer?.name || "Unknown")}</strong>
+              <span class="muted">${money(orderTotal(item).total)}</span>
+            </button>`;
           }).join("") || `<p class="muted">Nothing open yet. A quiet board is not the worst thing.</p>`
         }
       </div>
@@ -591,6 +594,10 @@ function handleListClick(event) {
   }
   if (action === "edit-order") {
     fillOrderForm(state.orders.find((order) => order.id === id));
+  }
+  if (action === "open-order") {
+    const order = state.orders.find((entry) => entry.id === id);
+    if (order) fillOrderForm(order);
   }
   if (action === "duplicate-order") {
     const source = state.orders.find((order) => order.id === id);
