@@ -12,7 +12,7 @@ import psycopg
 
 APP_DIR = Path(__file__).resolve().parent
 APP_DATA_DIR = Path(os.environ.get("APP_DATA_DIR", "/data"))
-TAX_RATE = 0.0825
+TAX_RATE = 0.08125
 
 
 def database_url() -> str:

@@ -2,7 +2,7 @@ const STORAGE_KEY = "autoShopManager.v1";
 const API_STATE_URL = "/api/state";
 const API_PARTS_SEARCH_URL = "/api/parts/search";
 const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
-const TAX_RATE = 0.0825;
+const TAX_RATE = 0.08125;
 
 const starterData = {
   customers: [
