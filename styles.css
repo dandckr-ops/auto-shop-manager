@@ -362,6 +362,25 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
+.provider-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.provider {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.provider.disabled {
+  background: #f7fafb;
+  color: var(--muted);
+}
+
 .quote {
   border: 1px solid var(--line);
   border-radius: 8px;

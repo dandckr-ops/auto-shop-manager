@@ -129,6 +129,14 @@
         </section>
 
         <section id="partsView" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Parts Providers</h2>
+              <span class="muted">Staged integrations</span>
+            </div>
+            <div id="partsProviders" class="provider-grid"></div>
+          </div>
+
           <div class="parts-layout">
             <form id="partsSearchForm" class="panel form-panel">
               <h2>Parts Lookup</h2>
@@ -143,6 +151,7 @@
                 <option>Starter</option>
               </select></label>
               <label>Part number / keyword<input id="partsKeyword" placeholder="Optional"></label>
+              <label>Add selected parts to<select id="partsTargetOrder"></select></label>
               <button class="primary" type="submit">Find Parts</button>
             </form>
 

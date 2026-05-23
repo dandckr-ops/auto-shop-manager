@@ -95,12 +95,54 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            create table if not exists parts_providers (
+                id text primary key,
+                provider_key text not null unique,
+                display_name text not null,
+                description text not null default '',
+                enabled boolean not null default false,
+                status text not null default 'staged',
+                api_base_url text not null default '',
+                account_id text not null default '',
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+            )
+            """
+        )
         conn.execute("create index if not exists idx_vehicles_customer on vehicles(customer_id)")
         conn.execute("create index if not exists idx_orders_customer on repair_orders(customer_id)")
         conn.execute("create index if not exists idx_order_lines_order on order_lines(order_id)")
         conn.execute("create index if not exists idx_parts_orders_status on parts_orders(status)")
         conn.execute("create table if not exists app_state_archive (id text primary key, data jsonb not null, updated_at timestamptz not null default now())")
+        seed_parts_providers(conn)
     migrate_blob_state()
+
+
+def seed_parts_providers(conn) -> None:
+    providers = [
+        ("partstech", "PartsTech", "Aggregator for live supplier pricing and ordering"),
+        ("nexpart", "Nexpart", "Multi-seller aftermarket catalog and ordering"),
+        ("napa", "NAPA Pro", "Professional account integration placeholder"),
+        ("manual", "Manual Supplier", "Fallback for phone quotes and local vendors"),
+    ]
+    for provider_key, display_name, description in providers:
+        conn.execute(
+            """
+            insert into parts_providers (id, provider_key, display_name, description, enabled, status)
+            values (%s, %s, %s, %s, %s, %s)
+            on conflict (provider_key) do nothing
+            """,
+            (
+                str(uuid.uuid4()),
+                provider_key,
+                display_name,
+                description,
+                provider_key == "manual",
+                "mock-ready" if provider_key == "manual" else "needs credentials",
+            ),
+        )
 
 
 def migrate_blob_state() -> None:
@@ -210,6 +252,82 @@ def get_state() -> dict:
             for row in parts_orders
         ],
     }
+
+
+def get_parts_providers() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            select provider_key, display_name, description, enabled, status
+            from parts_providers
+            order by enabled desc, display_name
+            """
+        ).fetchall()
+    return [
+        {
+            "key": row[0],
+            "displayName": row[1],
+            "description": row[2],
+            "enabled": row[3],
+            "status": row[4],
+        }
+        for row in rows
+    ]
+
+
+def retail_price(cost: float) -> float:
+    if cost < 25:
+        return round(cost * 1.8, 2)
+    if cost < 100:
+        return round(cost * 1.6, 2)
+    if cost < 300:
+        return round(cost * 1.4, 2)
+    return round(cost * 1.25, 2)
+
+
+def search_parts(data: dict) -> list[dict]:
+    state = get_state()
+    vehicle = None
+    for customer in state["customers"]:
+        vehicle = next((item for item in customer.get("vehicles", []) if item["id"] == data.get("vehicleId")), None)
+        if vehicle:
+            break
+
+    category = data.get("category") or "Part"
+    keyword = data.get("keyword") or ""
+    base = {
+        "Brake Pads": 46,
+        "Rotor": 58,
+        "Oil Filter": 8,
+        "Air Filter": 17,
+        "Battery": 142,
+        "Alternator": 215,
+        "Starter": 188,
+    }.get(category, 40)
+    suppliers = [
+        {"name": "Manual Supplier", "eta": "Call to confirm", "stock": 1, "factor": 1.0},
+        {"name": "PartsTech staged quote", "eta": "Credentials needed", "stock": 0, "factor": 1.04},
+        {"name": "Nexpart staged quote", "eta": "Credentials needed", "stock": 0, "factor": 0.96},
+    ]
+
+    vehicle_prefix = f"{vehicle.get('make', '')} {vehicle.get('model', '')} " if vehicle else ""
+    quotes = []
+    for index, supplier in enumerate(suppliers):
+        cost = round(base * supplier["factor"] + index * 3, 2)
+        quotes.append(
+            {
+                "id": str(uuid.uuid4()),
+                "supplier": supplier["name"],
+                "partName": f"{vehicle_prefix}{category}".strip(),
+                "partNumber": f"{category[:3].upper()}-{str(base * 10 + index * 7).zfill(4)}",
+                "description": f"{keyword} match" if keyword else "Staged replacement part quote",
+                "cost": cost,
+                "retail": retail_price(cost),
+                "eta": supplier["eta"],
+                "stock": supplier["stock"],
+            }
+        )
+    return quotes
 
 
 def write_state(data: dict, existing_conn=None) -> None:
@@ -435,6 +553,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/state":
             self.send_json(get_state())
             return
+        if path == "/api/parts/providers":
+            self.send_json({"providers": get_parts_providers()})
+            return
         super().do_GET()
 
     def do_PUT(self):
@@ -454,6 +575,10 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path != "/api/email/estimate":
+            if path == "/api/parts/search":
+                data = self.read_json()
+                self.send_json({"quotes": search_parts(data)})
+                return
             self.send_error(404)
             return
         data = self.read_json()

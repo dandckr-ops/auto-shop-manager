@@ -1,5 +1,7 @@
 const STORAGE_KEY = "autoShopManager.v1";
 const API_STATE_URL = "/api/state";
+const API_PARTS_SEARCH_URL = "/api/parts/search";
+const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
 const TAX_RATE = 0.0825;
 
 const starterData = {
@@ -29,6 +31,7 @@ const starterData = {
 let state = structuredClone(starterData);
 let currentView = "dashboard";
 let apiAvailable = false;
+let partsProviders = [];
 
 const views = {
   dashboard: {
@@ -141,6 +144,8 @@ function render() {
   renderDashboard();
   renderCustomerOptions();
   renderVehicleOptions();
+  renderPartsTargetOptions();
+  renderPartsProviders();
   renderCustomers();
   renderOrders();
   renderPartsOrders();
@@ -204,6 +209,35 @@ function renderVehicleOptions() {
       .join("");
     select.value = previous;
   });
+}
+
+function renderPartsTargetOptions() {
+  const select = document.querySelector("#partsTargetOrder");
+  if (!select) return;
+  const previous = select.value;
+  const openOrders = state.orders.filter((order) => order.status !== "Paid");
+  select.innerHTML = `<option value="">Do not add to estimate</option>` + openOrders.map((order) => {
+    const customer = state.customers.find((entry) => entry.id === order.customerId);
+    const vehicle = allVehicles().find((entry) => entry.id === order.vehicleId);
+    const label = `${customer?.name || "Unknown"} - ${vehicleLabel(vehicle)} - ${order.status}`;
+    return `<option value="${order.id}">${escapeHtml(label)}</option>`;
+  }).join("");
+  select.value = previous;
+}
+
+function renderPartsProviders() {
+  const container = document.querySelector("#partsProviders");
+  if (!container) return;
+  container.innerHTML = partsProviders.map((provider) => `
+    <article class="provider ${provider.enabled ? "" : "disabled"}">
+      <div class="list-item-title">
+        <strong>${escapeHtml(provider.displayName)}</strong>
+        <span class="pill">${escapeHtml(provider.status)}</span>
+      </div>
+      <span class="muted">${escapeHtml(provider.description || "Provider adapter staged")}</span>
+      <span>${provider.enabled ? "Ready for credentials" : "Disabled"}</span>
+    </article>
+  `).join("") || `<p class="muted">Provider status will appear here.</p>`;
 }
 
 function renderCustomers() {
@@ -426,41 +460,6 @@ function updateTotals() {
   document.querySelector("#totalOut").textContent = money(total.total);
 }
 
-const mockPartsProvider = {
-  async search({ vehicleId, category, keyword }) {
-    const vehicle = allVehicles().find((entry) => entry.id === vehicleId);
-    const base = {
-      "Brake Pads": 46,
-      "Rotor": 58,
-      "Oil Filter": 8,
-      "Air Filter": 17,
-      "Battery": 142,
-      "Alternator": 215,
-      "Starter": 188
-    }[category] || 40;
-    const suppliers = [
-      { name: "NAPA Pro", eta: "Today 2:30 PM", stock: 4, factor: 1.08 },
-      { name: "O'Reilly Pro", eta: "Today 4:00 PM", stock: 2, factor: 0.98 },
-      { name: "Local Warehouse", eta: "Tomorrow AM", stock: 8, factor: 0.9 }
-    ];
-
-    return suppliers.map((supplier, index) => {
-      const cost = Number((base * supplier.factor + index * 3).toFixed(2));
-      return {
-        id: crypto.randomUUID(),
-        supplier: supplier.name,
-        partName: `${vehicle ? `${vehicle.make} ${vehicle.model} ` : ""}${category}`,
-        partNumber: `${category.slice(0, 3).toUpperCase()}-${String(base * 10 + index * 7).padStart(4, "0")}`,
-        description: keyword ? `${keyword} match` : "Standard replacement part",
-        cost,
-        retail: retailPrice(cost),
-        eta: supplier.eta,
-        stock: supplier.stock
-      };
-    });
-  }
-};
-
 function retailPrice(cost) {
   if (cost < 25) return Number((cost * 1.8).toFixed(2));
   if (cost < 100) return Number((cost * 1.6).toFixed(2));
@@ -470,11 +469,8 @@ function retailPrice(cost) {
 
 async function searchParts(event) {
   event.preventDefault();
-  const quotes = await mockPartsProvider.search({
-    vehicleId: document.querySelector("#partsVehicle").value,
-    category: document.querySelector("#partsCategory").value,
-    keyword: document.querySelector("#partsKeyword").value.trim()
-  });
+  const targetOrderId = document.querySelector("#partsTargetOrder").value;
+  const quotes = await fetchPartsQuotes();
   document.querySelector("#partsResults").innerHTML = quotes.map((quote) => `
     <article class="quote">
       <strong>${escapeHtml(quote.partName)}</strong>
@@ -488,8 +484,67 @@ async function searchParts(event) {
         data-cost="${quote.cost}"
         data-retail="${quote.retail}"
         data-eta="${escapeHtml(quote.eta)}">Track Order</button>
+      ${targetOrderId ? `<button class="secondary small" data-action="add-quote-to-order"
+        data-order-id="${escapeHtml(targetOrderId)}"
+        data-part="${escapeHtml(quote.partName)}"
+        data-retail="${quote.retail}"
+        data-supplier="${escapeHtml(quote.supplier)}"
+        data-number="${escapeHtml(quote.partNumber)}">Add to Estimate</button>` : ""}
     </article>
   `).join("");
+}
+
+async function fetchPartsQuotes() {
+  const payload = {
+    vehicleId: document.querySelector("#partsVehicle").value,
+    category: document.querySelector("#partsCategory").value,
+    keyword: document.querySelector("#partsKeyword").value.trim()
+  };
+  if (apiAvailable) {
+    const response = await fetch(API_PARTS_SEARCH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.quotes || [];
+    }
+  }
+  return localPartsSearch(payload);
+}
+
+function localPartsSearch({ vehicleId, category, keyword }) {
+  const vehicle = allVehicles().find((entry) => entry.id === vehicleId);
+  const base = {
+    "Brake Pads": 46,
+    "Rotor": 58,
+    "Oil Filter": 8,
+    "Air Filter": 17,
+    "Battery": 142,
+    "Alternator": 215,
+    "Starter": 188
+  }[category] || 40;
+  const suppliers = [
+    { name: "Mock NAPA Pro", eta: "Today 2:30 PM", stock: 4, factor: 1.08 },
+    { name: "Mock O'Reilly Pro", eta: "Today 4:00 PM", stock: 2, factor: 0.98 },
+    { name: "Mock Local Warehouse", eta: "Tomorrow AM", stock: 8, factor: 0.9 }
+  ];
+
+  return suppliers.map((supplier, index) => {
+    const cost = Number((base * supplier.factor + index * 3).toFixed(2));
+    return {
+      id: crypto.randomUUID(),
+      supplier: supplier.name,
+      partName: `${vehicle ? `${vehicle.make} ${vehicle.model} ` : ""}${category}`,
+      partNumber: `${category.slice(0, 3).toUpperCase()}-${String(base * 10 + index * 7).padStart(4, "0")}`,
+      description: keyword ? `${keyword} match` : "Standard replacement part",
+      cost,
+      retail: retailPrice(cost),
+      eta: supplier.eta,
+      stock: supplier.stock
+    };
+  });
 }
 
 function startOrderForCustomer(customerId) {
@@ -549,6 +604,19 @@ function handleListClick(event) {
       eta: button.dataset.eta,
       status: "Quoted"
     });
+    saveState();
+    render();
+  }
+  if (action === "add-quote-to-order") {
+    const order = state.orders.find((entry) => entry.id === button.dataset.orderId);
+    if (!order) return;
+    order.parts = order.parts || [];
+    order.parts.push({
+      description: `${button.dataset.part} (${button.dataset.supplier} ${button.dataset.number})`,
+      qty: 1,
+      rate: Number(button.dataset.retail) || 0
+    });
+    order.updatedAt = new Date().toISOString();
     saveState();
     render();
   }
@@ -660,8 +728,21 @@ document.body.addEventListener("click", handleListClick);
 
 async function boot() {
   state = await loadState();
+  partsProviders = await loadPartsProviders();
   clearOrderForm();
   render();
+}
+
+async function loadPartsProviders() {
+  if (!apiAvailable) return [];
+  try {
+    const response = await fetch(API_PARTS_PROVIDERS_URL, { cache: "no-store" });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.providers || [];
+  } catch {
+    return [];
+  }
 }
 
 boot();
