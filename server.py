@@ -6,7 +6,7 @@ import uuid
 from email.message import EmailMessage
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import psycopg
 
@@ -444,6 +444,12 @@ def write_backup(data: dict) -> None:
     )
 
 
+def delete_order(order_id: str) -> bool:
+    with connect() as conn:
+        cursor = conn.execute("delete from repair_orders where id = %s", (order_id,))
+        return cursor.rowcount > 0
+
+
 def order_total(order: dict) -> dict:
     subtotal = sum(float(line.get("qty") or 0) * float(line.get("rate") or 0) for line in order.get("labor", []) + order.get("parts", []))
     parts_subtotal = sum(float(line.get("qty") or 0) * float(line.get("rate") or 0) for line in order.get("parts", []))
@@ -575,6 +581,24 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         write_state(data)
+        self.send_json({"ok": True})
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        prefix = "/api/orders/"
+        if not path.startswith(prefix):
+            self.send_error(404)
+            return
+
+        order_id = unquote(path[len(prefix):])
+        if not order_id:
+            self.send_json({"ok": False, "error": "Order id is required"}, status=400)
+            return
+
+        if not delete_order(order_id):
+            self.send_json({"ok": False, "error": "Order not found"}, status=404)
+            return
+
         self.send_json({"ok": True})
 
     def do_POST(self):

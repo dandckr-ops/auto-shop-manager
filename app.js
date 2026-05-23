@@ -618,18 +618,18 @@ function handleListClick(event) {
   }
   if (action === "part-status") {
     const partOrder = state.partsOrders.find((entry) => entry.id === id);
-    partOrder.status = button.dataset.status;
+    partOrder.status = control.dataset.status;
     saveState();
     render();
   }
   if (action === "order-part") {
     state.partsOrders.unshift({
       id: crypto.randomUUID(),
-      supplier: button.dataset.supplier,
-      partName: button.dataset.part,
-      cost: Number(button.dataset.cost),
-      retail: Number(button.dataset.retail),
-      eta: button.dataset.eta,
+      supplier: control.dataset.supplier,
+      partName: control.dataset.part,
+      cost: Number(control.dataset.cost),
+      retail: Number(control.dataset.retail),
+      eta: control.dataset.eta,
       status: "Quoted"
     });
     saveState();
@@ -650,18 +650,36 @@ function handleListClick(event) {
   }
 }
 
-function deleteOrder(orderId) {
+async function deleteOrder(orderId) {
   const order = state.orders.find((entry) => entry.id === orderId);
   if (!order) return;
   const customer = state.customers.find((entry) => entry.id === order.customerId);
   const label = customer?.name ? `${customer.name}'s ${order.status}` : order.status;
   if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
-  state.orders = state.orders.filter((entry) => entry.id !== orderId);
-  if (document.querySelector("#orderId").value === orderId) {
-    clearOrderForm();
+
+  try {
+    if (apiAvailable) {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+        method: "DELETE"
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Delete failed");
+      }
+    }
+
+    state.orders = state.orders.filter((entry) => entry.id !== orderId);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state, null, 2));
+    if (!apiAvailable) {
+      await saveState();
+    }
+    if (document.querySelector("#orderId").value === orderId) {
+      clearOrderForm();
+    }
+    render();
+  } catch (error) {
+    alert(error.message);
   }
-  saveState();
-  render();
 }
 
 async function emailOrder(orderId, button) {
