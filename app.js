@@ -21,6 +21,15 @@ const LEGACY_STATUS_MAP = {
   Ready: "ready to be completed",
   Paid: "paid/close"
 };
+const STATUS_STYLE_MAP = {
+  "estimate created": "status-estimate-created",
+  "estimate sent": "status-estimate-sent",
+  "estimate approved, order parts": "status-approved",
+  "waiting on parts": "status-waiting",
+  "ready to be completed": "status-ready",
+  "work done": "status-done",
+  "paid/close": "status-closed"
+};
 
 const starterData = {
   customers: [
@@ -139,6 +148,10 @@ function isClosedOrder(order) {
   return normalizeOrderStatus(order.status) === CLOSED_ORDER_STATUS;
 }
 
+function statusClass(status) {
+  return STATUS_STYLE_MAP[normalizeOrderStatus(status)] || "status-estimate-created";
+}
+
 function roundCurrency(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
@@ -218,9 +231,15 @@ function renderDashboard() {
             }
             const customer = state.customers.find((entry) => entry.id === item.customerId);
             return `<a href="#estimate-${escapeHtml(item.id)}" class="list-item card-link" data-action="open-order" data-id="${item.id}">
-              <strong>${escapeHtml(item.status)} - ${escapeHtml(customer?.name || "Unknown")}</strong>
-              <span class="muted">${money(orderTotal(item).total)}</span>
-              <span class="link-hint">Open estimate</span>
+              <span class="dashboard-card-main">
+                <strong>${escapeHtml(item.status)} - ${escapeHtml(customer?.name || "Unknown")}</strong>
+                <span class="muted">${money(orderTotal(item).total)}</span>
+                <span class="link-hint">Open estimate</span>
+              </span>
+              <span class="progress-indicator ${statusClass(item.status)}">
+                <span class="progress-dot" aria-hidden="true"></span>
+                ${escapeHtml(normalizeOrderStatus(item.status))}
+              </span>
             </a>`;
           }).join("") || `<p class="muted">Nothing open yet. A quiet board is not the worst thing.</p>`
         }
@@ -328,7 +347,7 @@ function renderOrders() {
       <article class="list-item">
         <div class="list-item-title">
           <strong>${escapeHtml(customer?.name || "Unknown customer")}</strong>
-          <span class="pill">${escapeHtml(order.status)}</span>
+          <span class="pill ${statusClass(order.status)}">${escapeHtml(normalizeOrderStatus(order.status))}</span>
         </div>
         <span class="muted">${escapeHtml(vehicleLabel(vehicle))}</span>
         <span>${escapeHtml(order.concern || "No concern entered")}</span>

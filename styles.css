@@ -291,9 +291,16 @@ textarea {
 }
 
 .card-link {
+  align-items: center;
   color: inherit;
   cursor: pointer;
+  grid-template-columns: minmax(180px, 1fr) auto;
   text-decoration: none;
+}
+
+.dashboard-card-main {
+  display: grid;
+  gap: 8px;
 }
 
 .card-link strong {
@@ -332,6 +339,88 @@ textarea {
   display: inline-flex;
   font-size: 12px;
   padding: 4px 8px;
+}
+
+.progress-indicator {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  justify-self: end;
+  padding: 7px 11px;
+  white-space: nowrap;
+}
+
+.progress-dot {
+  border-radius: 999px;
+  display: inline-flex;
+  height: 10px;
+  width: 10px;
+}
+
+.status-estimate-created {
+  background: #e8f1f8;
+  color: #24557a;
+}
+
+.status-estimate-created .progress-dot {
+  background: #2e80b8;
+}
+
+.status-estimate-sent {
+  background: #edf0ff;
+  color: #4353a6;
+}
+
+.status-estimate-sent .progress-dot {
+  background: #5867d8;
+}
+
+.status-approved {
+  background: #eef5df;
+  color: #506a17;
+}
+
+.status-approved .progress-dot {
+  background: #87a92c;
+}
+
+.status-waiting {
+  background: #fff3d7;
+  color: #7a520e;
+}
+
+.status-waiting .progress-dot {
+  background: #d99a1e;
+}
+
+.status-ready {
+  background: #e6f7f0;
+  color: #14624d;
+}
+
+.status-ready .progress-dot {
+  background: #23926f;
+}
+
+.status-done {
+  background: #eaf7e8;
+  color: #246126;
+}
+
+.status-done .progress-dot {
+  background: #43a047;
+}
+
+.status-closed {
+  background: #edf1f4;
+  color: #53636d;
+}
+
+.status-closed .progress-dot {
+  background: #7a8993;
 }
 
 .vehicle-list {
