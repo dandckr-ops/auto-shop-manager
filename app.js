@@ -3,6 +3,24 @@ const API_STATE_URL = "/api/state";
 const API_PARTS_SEARCH_URL = "/api/parts/search";
 const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
 const TAX_RATE = 0.08125;
+const ORDER_STATUSES = [
+  "estimate created",
+  "estimate sent",
+  "estimate approved, order parts",
+  "waiting on parts",
+  "ready to be completed",
+  "work done",
+  "paid/close"
+];
+const CLOSED_ORDER_STATUS = "paid/close";
+const LEGACY_STATUS_MAP = {
+  Estimate: "estimate created",
+  Approved: "estimate approved, order parts",
+  "In Progress": "ready to be completed",
+  "Waiting Parts": "waiting on parts",
+  Ready: "ready to be completed",
+  Paid: "paid/close"
+};
 
 const starterData = {
   customers: [
@@ -67,13 +85,13 @@ async function loadState() {
     if (!response.ok) throw new Error(`State API returned ${response.status}`);
     const payload = await response.json();
     apiAvailable = true;
-    return payload;
+    return normalizeState(payload);
   } catch {
     apiAvailable = false;
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return structuredClone(starterData);
     try {
-      return JSON.parse(saved);
+      return normalizeState(JSON.parse(saved));
     } catch {
       return structuredClone(starterData);
     }
@@ -100,6 +118,25 @@ function money(value) {
     style: "currency",
     currency: "USD"
   }).format(Number(value) || 0);
+}
+
+function normalizeOrderStatus(status) {
+  return LEGACY_STATUS_MAP[status] || (ORDER_STATUSES.includes(status) ? status : ORDER_STATUSES[0]);
+}
+
+function normalizeState(data) {
+  const normalized = data || structuredClone(starterData);
+  normalized.customers = normalized.customers || [];
+  normalized.orders = (normalized.orders || []).map((order) => ({
+    ...order,
+    status: normalizeOrderStatus(order.status)
+  }));
+  normalized.partsOrders = normalized.partsOrders || [];
+  return normalized;
+}
+
+function isClosedOrder(order) {
+  return normalizeOrderStatus(order.status) === CLOSED_ORDER_STATUS;
 }
 
 function roundCurrency(value) {
@@ -157,7 +194,7 @@ function render() {
 }
 
 function renderDashboard() {
-  const openOrders = state.orders.filter((order) => !["Paid"].includes(order.status));
+  const openOrders = state.orders.filter((order) => !isClosedOrder(order));
   const waitingParts = state.partsOrders.filter((order) => order.status !== "Received");
   const unpaidTotal = openOrders.reduce((sum, order) => sum + orderTotal(order).total, 0);
 
@@ -223,7 +260,7 @@ function renderPartsTargetOptions() {
   const select = document.querySelector("#partsTargetOrder");
   if (!select) return;
   const previous = select.value;
-  const openOrders = state.orders.filter((order) => order.status !== "Paid");
+  const openOrders = state.orders.filter((order) => !isClosedOrder(order));
   select.innerHTML = `<option value="">Do not add to estimate</option>` + openOrders.map((order) => {
     const customer = state.customers.find((entry) => entry.id === order.customerId);
     const vehicle = allVehicles().find((entry) => entry.id === order.vehicleId);
@@ -280,8 +317,8 @@ function renderOrders() {
   const list = document.querySelector("#orderList");
   const orders = state.orders.filter((order) => {
     if (filter === "all") return true;
-    if (filter === "open") return order.status !== "Paid";
-    return order.status === filter;
+    if (filter === "open") return !isClosedOrder(order);
+    return normalizeOrderStatus(order.status) === filter;
   });
 
   list.innerHTML = orders.map((order) => {
@@ -411,7 +448,7 @@ function clearOrderForm() {
   document.querySelector("#orderId").value = "";
   document.querySelector("#laborLines").innerHTML = "";
   document.querySelector("#partLines").innerHTML = "";
-  document.querySelector("#orderStatus").value = "Estimate";
+  document.querySelector("#orderStatus").value = ORDER_STATUSES[0];
   addLine("labor");
   addLine("part");
   updateCurrentOrderActions();
@@ -423,7 +460,7 @@ function orderFromForm() {
     id: document.querySelector("#orderId").value || crypto.randomUUID(),
     customerId: document.querySelector("#orderCustomer").value,
     vehicleId: document.querySelector("#orderVehicle").value,
-    status: document.querySelector("#orderStatus").value,
+    status: normalizeOrderStatus(document.querySelector("#orderStatus").value),
     odometer: document.querySelector("#orderOdometer").value.trim(),
     concern: document.querySelector("#orderConcern").value.trim(),
     labor: readLines("#laborLines"),
@@ -437,7 +474,7 @@ function fillOrderForm(order) {
   document.querySelector("#orderCustomer").value = order.customerId;
   renderVehicleOptions();
   document.querySelector("#orderVehicle").value = order.vehicleId || "";
-  document.querySelector("#orderStatus").value = order.status;
+  document.querySelector("#orderStatus").value = normalizeOrderStatus(order.status);
   document.querySelector("#orderOdometer").value = order.odometer || "";
   document.querySelector("#orderConcern").value = order.concern || "";
   document.querySelector("#laborLines").innerHTML = "";
@@ -604,7 +641,7 @@ function handleListClick(event) {
     const source = state.orders.find((order) => order.id === id);
     const copy = structuredClone(source);
     copy.id = crypto.randomUUID();
-    copy.status = "Estimate";
+    copy.status = ORDER_STATUSES[0];
     copy.updatedAt = new Date().toISOString();
     state.orders.unshift(copy);
     saveState();

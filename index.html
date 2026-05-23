@@ -72,12 +72,13 @@
               <div class="grid-2">
                 <label>Customer<select id="orderCustomer" required></select></label>
                 <label>Status<select id="orderStatus">
-                  <option>Estimate</option>
-                  <option>Approved</option>
-                  <option>In Progress</option>
-                  <option>Waiting Parts</option>
-                  <option>Ready</option>
-                  <option>Paid</option>
+                  <option>estimate created</option>
+                  <option>estimate sent</option>
+                  <option>estimate approved, order parts</option>
+                  <option>waiting on parts</option>
+                  <option>ready to be completed</option>
+                  <option>work done</option>
+                  <option>paid/close</option>
                 </select></label>
                 <label>Vehicle<select id="orderVehicle"></select></label>
                 <label>Odometer<input id="orderOdometer" inputmode="numeric"></label>
@@ -119,9 +120,13 @@
                 <select id="orderFilter">
                   <option value="open">Open</option>
                   <option value="all">All</option>
-                  <option value="Estimate">Estimates</option>
-                  <option value="Waiting Parts">Waiting Parts</option>
-                  <option value="Paid">Paid</option>
+                  <option value="estimate created">estimate created</option>
+                  <option value="estimate sent">estimate sent</option>
+                  <option value="estimate approved, order parts">estimate approved, order parts</option>
+                  <option value="waiting on parts">waiting on parts</option>
+                  <option value="ready to be completed">ready to be completed</option>
+                  <option value="work done">work done</option>
+                  <option value="paid/close">paid/close</option>
                 </select>
               </div>
               <div id="orderList" class="list"></div>

@@ -14,6 +14,23 @@ import psycopg
 APP_DIR = Path(__file__).resolve().parent
 APP_DATA_DIR = Path(os.environ.get("APP_DATA_DIR", "/data"))
 TAX_RATE = 0.08125
+ORDER_STATUSES = [
+    "estimate created",
+    "estimate sent",
+    "estimate approved, order parts",
+    "waiting on parts",
+    "ready to be completed",
+    "work done",
+    "paid/close",
+]
+LEGACY_STATUS_MAP = {
+    "Estimate": "estimate created",
+    "Approved": "estimate approved, order parts",
+    "In Progress": "ready to be completed",
+    "Waiting Parts": "waiting on parts",
+    "Ready": "ready to be completed",
+    "Paid": "paid/close",
+}
 
 
 def database_url() -> str:
@@ -60,7 +77,7 @@ def init_db() -> None:
                 id text primary key,
                 customer_id text not null references customers(id) on delete cascade,
                 vehicle_id text references vehicles(id) on delete set null,
-                status text not null default 'Estimate',
+                status text not null default 'estimate created',
                 odometer text not null default '',
                 concern text not null default '',
                 created_at timestamptz not null default now(),
@@ -117,8 +134,26 @@ def init_db() -> None:
         conn.execute("create index if not exists idx_order_lines_order on order_lines(order_id)")
         conn.execute("create index if not exists idx_parts_orders_status on parts_orders(status)")
         conn.execute("create table if not exists app_state_archive (id text primary key, data jsonb not null, updated_at timestamptz not null default now())")
+        conn.execute("alter table repair_orders alter column status set default 'estimate created'")
+        migrate_order_statuses(conn)
         seed_parts_providers(conn)
     migrate_blob_state()
+
+
+def normalize_order_status(status: str | None) -> str:
+    if status in LEGACY_STATUS_MAP:
+        return LEGACY_STATUS_MAP[status]
+    if status in ORDER_STATUSES:
+        return status
+    return ORDER_STATUSES[0]
+
+
+def migrate_order_statuses(conn) -> None:
+    for old_status, new_status in LEGACY_STATUS_MAP.items():
+        conn.execute(
+            "update repair_orders set status = %s where status = %s",
+            (new_status, old_status),
+        )
 
 
 def seed_parts_providers(conn) -> None:
@@ -231,7 +266,7 @@ def get_state() -> dict:
                 "id": row[0],
                 "customerId": row[1],
                 "vehicleId": row[2] or "",
-                "status": row[3],
+                "status": normalize_order_status(row[3]),
                 "odometer": row[4],
                 "concern": row[5],
                 "updatedAt": row[6].isoformat(),
@@ -385,7 +420,7 @@ def write_state(data: dict, existing_conn=None) -> None:
                     order_id,
                     order.get("customerId"),
                     order.get("vehicleId") or "",
-                    order.get("status") or "Estimate",
+                    normalize_order_status(order.get("status")),
                     order.get("odometer") or "",
                     order.get("concern") or "",
                 ),
@@ -490,7 +525,7 @@ def build_estimate_email(order_id: str, to_address: str | None = None) -> EmailM
     lines = [
         f"Hi {customer.get('name', '').strip() or 'there'},",
         "",
-        f"Here is the current {order.get('status', 'estimate').lower()} for {vehicle_label}.",
+        f"Here is the current {normalize_order_status(order.get('status'))} for {vehicle_label}.",
         "",
         f"Requested work: {order.get('concern') or 'Not specified'}",
         "",
@@ -514,7 +549,7 @@ def build_estimate_email(order_id: str, to_address: str | None = None) -> EmailM
     msg = EmailMessage()
     msg["To"] = recipient
     msg["From"] = os.environ.get("SMTP_FROM", "")
-    msg["Subject"] = f"{order.get('status', 'Estimate')} for {vehicle_label}"
+    msg["Subject"] = f"{normalize_order_status(order.get('status'))} for {vehicle_label}"
     msg.set_content("\n".join(lines))
     return msg
 
