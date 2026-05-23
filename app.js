@@ -183,6 +183,7 @@ function renderDashboard() {
             return `<a href="#estimate-${escapeHtml(item.id)}" class="list-item card-link" data-action="open-order" data-id="${item.id}">
               <strong>${escapeHtml(item.status)} - ${escapeHtml(customer?.name || "Unknown")}</strong>
               <span class="muted">${money(orderTotal(item).total)}</span>
+              <span class="link-hint">Open estimate</span>
             </a>`;
           }).join("") || `<p class="muted">Nothing open yet. A quiet board is not the worst thing.</p>`
         }
@@ -597,8 +598,7 @@ function handleListClick(event) {
     fillOrderForm(state.orders.find((order) => order.id === id));
   }
   if (action === "open-order") {
-    const order = state.orders.find((entry) => entry.id === id);
-    if (order) fillOrderForm(order);
+    openOrder(id);
   }
   if (action === "duplicate-order") {
     const source = state.orders.find((order) => order.id === id);
@@ -648,6 +648,17 @@ function handleListClick(event) {
     saveState();
     render();
   }
+}
+
+function openOrder(orderId) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (order) fillOrderForm(order);
+}
+
+function openOrderFromHash() {
+  const match = window.location.hash.match(/^#estimate-(.+)$/);
+  if (!match) return;
+  openOrder(decodeURIComponent(match[1]));
 }
 
 async function deleteOrder(orderId) {
@@ -795,6 +806,7 @@ async function boot() {
   partsProviders = await loadPartsProviders();
   clearOrderForm();
   render();
+  openOrderFromHash();
 }
 
 async function loadPartsProviders() {
@@ -810,3 +822,4 @@ async function loadPartsProviders() {
 }
 
 boot();
+window.addEventListener("hashchange", openOrderFromHash);
