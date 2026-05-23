@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Auto Shop Manager</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">ASM</span>
+          <div>
+            <strong>Shop Manager</strong>
+            <small>Local starter</small>
+          </div>
+        </div>
+        <nav aria-label="Main">
+          <button class="nav-button active" data-view="dashboard">Dashboard</button>
+          <button class="nav-button" data-view="customers">Customers</button>
+          <button class="nav-button" data-view="orders">Estimates & ROs</button>
+          <button class="nav-button" data-view="parts">Parts</button>
+          <button class="nav-button" data-view="settings">Backup</button>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1 id="viewTitle">Dashboard</h1>
+            <p id="viewSubtitle">Today at a glance.</p>
+          </div>
+          <div class="topbar-actions">
+            <button class="secondary" id="newCustomerQuick">New Customer</button>
+            <button class="primary" id="newOrderQuick">New Estimate</button>
+          </div>
+        </header>
+
+        <section id="dashboardView" class="view active"></section>
+
+        <section id="customersView" class="view">
+          <div class="split-layout">
+            <form id="customerForm" class="panel form-panel">
+              <h2>Add Customer</h2>
+              <input type="hidden" id="customerId">
+              <label>Name<input id="customerName" required autocomplete="name"></label>
+              <label>Phone<input id="customerPhone" autocomplete="tel"></label>
+              <label>Email<input id="customerEmail" type="email" autocomplete="email"></label>
+              <label>Notes<textarea id="customerNotes" rows="3"></textarea></label>
+              <div class="form-actions">
+                <button type="button" class="secondary" id="clearCustomerForm">Clear</button>
+                <button class="primary" type="submit">Save Customer</button>
+              </div>
+            </form>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Customers</h2>
+                <input id="customerSearch" class="search-input" placeholder="Search customers">
+              </div>
+              <div id="customerList" class="list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="ordersView" class="view">
+          <div class="order-layout">
+            <form id="orderForm" class="panel form-panel">
+              <h2>Estimate / Repair Order</h2>
+              <input type="hidden" id="orderId">
+              <div class="grid-2">
+                <label>Customer<select id="orderCustomer" required></select></label>
+                <label>Status<select id="orderStatus">
+                  <option>Estimate</option>
+                  <option>Approved</option>
+                  <option>In Progress</option>
+                  <option>Waiting Parts</option>
+                  <option>Ready</option>
+                  <option>Paid</option>
+                </select></label>
+                <label>Vehicle<select id="orderVehicle"></select></label>
+                <label>Odometer<input id="orderOdometer" inputmode="numeric"></label>
+              </div>
+              <label>Complaint / requested work<textarea id="orderConcern" rows="3"></textarea></label>
+
+              <div class="line-editor">
+                <div class="line-title">
+                  <h3>Labor</h3>
+                  <button type="button" class="secondary small" id="addLaborLine">Add Labor</button>
+                </div>
+                <div id="laborLines"></div>
+              </div>
+
+              <div class="line-editor">
+                <div class="line-title">
+                  <h3>Parts</h3>
+                  <button type="button" class="secondary small" id="addPartLine">Add Part</button>
+                </div>
+                <div id="partLines"></div>
+              </div>
+
+              <div class="totals">
+                <span>Subtotal <strong id="subtotalOut">$0.00</strong></span>
+                <span>Tax <strong id="taxOut">$0.00</strong></span>
+                <span>Total <strong id="totalOut">$0.00</strong></span>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="secondary" id="clearOrderForm">Clear</button>
+                <button type="button" class="secondary" id="printOrder">Print</button>
+                <button class="primary" type="submit">Save</button>
+              </div>
+            </form>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Open Work</h2>
+                <select id="orderFilter">
+                  <option value="open">Open</option>
+                  <option value="all">All</option>
+                  <option value="Estimate">Estimates</option>
+                  <option value="Waiting Parts">Waiting Parts</option>
+                  <option value="Paid">Paid</option>
+                </select>
+              </div>
+              <div id="orderList" class="list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="partsView" class="view">
+          <div class="parts-layout">
+            <form id="partsSearchForm" class="panel form-panel">
+              <h2>Parts Lookup</h2>
+              <label>Vehicle<select id="partsVehicle"></select></label>
+              <label>Category<select id="partsCategory">
+                <option>Brake Pads</option>
+                <option>Rotor</option>
+                <option>Oil Filter</option>
+                <option>Air Filter</option>
+                <option>Battery</option>
+                <option>Alternator</option>
+                <option>Starter</option>
+              </select></label>
+              <label>Part number / keyword<input id="partsKeyword" placeholder="Optional"></label>
+              <button class="primary" type="submit">Find Parts</button>
+            </form>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2>Supplier Quotes</h2>
+                <span class="muted">Mock provider</span>
+              </div>
+              <div id="partsResults" class="quote-grid"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Parts Orders</h2>
+              <button class="secondary small" id="clearCompletedParts">Clear Completed</button>
+            </div>
+            <div id="partsOrders" class="list"></div>
+          </div>
+        </section>
+
+        <section id="settingsView" class="view">
+          <div class="panel narrow">
+            <h2>Backup</h2>
+            <p class="muted">Export a JSON backup regularly. Import replaces the local browser copy.</p>
+            <div class="backup-actions">
+              <button class="primary" id="exportData">Export JSON</button>
+              <label class="file-button">Import JSON<input id="importData" type="file" accept="application/json"></label>
+              <button class="danger" id="resetDemo">Reset Local Data</button>
+            </div>
+            <textarea id="backupOutput" rows="10" readonly placeholder="Exported backup appears here."></textarea>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="lineTemplate">
+      <div class="line-row">
+        <input class="line-description" placeholder="Description">
+        <input class="line-qty" type="number" min="0" step="0.1" value="1" aria-label="Quantity">
+        <input class="line-rate" type="number" min="0" step="0.01" value="0" aria-label="Rate">
+        <strong class="line-total">$0.00</strong>
+        <button type="button" class="icon-button remove-line" aria-label="Remove line">x</button>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
