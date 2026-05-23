@@ -290,6 +290,17 @@ textarea {
   box-shadow: 0 8px 18px rgba(23, 32, 39, 0.08);
 }
 
+.card-link {
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.card-link strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .card-link:focus-visible {
   outline: 3px solid rgba(46, 128, 184, 0.28);
   outline-offset: 2px;

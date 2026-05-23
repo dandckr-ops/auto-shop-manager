@@ -180,10 +180,10 @@ function renderDashboard() {
               return `<div class="list-item"><strong>${escapeHtml(item.partName)}</strong><span class="muted">${escapeHtml(item.supplier)} - ${escapeHtml(item.status)}</span></div>`;
             }
             const customer = state.customers.find((entry) => entry.id === item.customerId);
-            return `<button type="button" class="list-item card-link" data-action="open-order" data-id="${item.id}">
+            return `<a href="#estimate-${escapeHtml(item.id)}" class="list-item card-link" data-action="open-order" data-id="${item.id}">
               <strong>${escapeHtml(item.status)} - ${escapeHtml(customer?.name || "Unknown")}</strong>
               <span class="muted">${money(orderTotal(item).total)}</span>
-            </button>`;
+            </a>`;
           }).join("") || `<p class="muted">Nothing open yet. A quiet board is not the worst thing.</p>`
         }
       </div>
@@ -579,9 +579,10 @@ function startOrderForCustomer(customerId) {
 }
 
 function handleListClick(event) {
-  const button = event.target.closest("button[data-action]");
-  if (!button) return;
-  const { action, id } = button.dataset;
+  const control = event.target.closest("[data-action]");
+  if (!control) return;
+  event.preventDefault();
+  const { action, id } = control.dataset;
 
   if (action === "edit-customer") {
     fillCustomerForm(state.customers.find((customer) => customer.id === id));
@@ -613,7 +614,7 @@ function handleListClick(event) {
     deleteOrder(id);
   }
   if (action === "email-order") {
-    emailOrder(id, button);
+    emailOrder(id, control);
   }
   if (action === "part-status") {
     const partOrder = state.partsOrders.find((entry) => entry.id === id);
@@ -635,13 +636,13 @@ function handleListClick(event) {
     render();
   }
   if (action === "add-quote-to-order") {
-    const order = state.orders.find((entry) => entry.id === button.dataset.orderId);
+    const order = state.orders.find((entry) => entry.id === control.dataset.orderId);
     if (!order) return;
     order.parts = order.parts || [];
     order.parts.push({
-      description: `${button.dataset.part} (${button.dataset.supplier} ${button.dataset.number})`,
+      description: `${control.dataset.part} (${control.dataset.supplier} ${control.dataset.number})`,
       qty: 1,
-      rate: Number(button.dataset.retail) || 0
+      rate: Number(control.dataset.retail) || 0
     });
     order.updatedAt = new Date().toISOString();
     saveState();
