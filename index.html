@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260523-2">
+    <link rel="stylesheet" href="styles.css?v=20260526-1">
   </head>
   <body>
     <div class="app-shell">
@@ -108,6 +108,7 @@
               </div>
               <div class="form-actions">
                 <button type="button" class="secondary" id="clearOrderForm">Clear</button>
+                <button type="button" class="secondary" id="lookupPartsForCurrentOrder">Find Parts</button>
                 <button type="button" class="secondary" id="printOrder">Print</button>
                 <button type="button" class="danger" id="deleteCurrentOrder">Delete</button>
                 <button class="primary" type="submit">Save</button>
@@ -147,6 +148,7 @@
             <form id="partsSearchForm" class="panel form-panel">
               <h2>Parts Lookup</h2>
               <label>Vehicle<select id="partsVehicle"></select></label>
+              <div id="rockAutoLookup" class="external-lookup"></div>
               <label>Category<select id="partsCategory">
                 <option>Brake Pads</option>
                 <option>Rotor</option>
@@ -204,6 +206,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=20260523-2"></script>
+    <script src="app.js?v=20260526-1"></script>
   </body>
 </html>

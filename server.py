@@ -161,6 +161,7 @@ def seed_parts_providers(conn) -> None:
         ("partstech", "PartsTech", "Aggregator for live supplier pricing and ordering"),
         ("nexpart", "Nexpart", "Multi-seller aftermarket catalog and ordering"),
         ("napa", "NAPA Pro", "Professional account integration placeholder"),
+        ("rockauto", "RockAuto", "Manual catalog handoff for vehicle-based lookups"),
         ("manual", "Manual Supplier", "Fallback for phone quotes and local vendors"),
     ]
     for provider_key, display_name, description in providers:
@@ -175,8 +176,10 @@ def seed_parts_providers(conn) -> None:
                 provider_key,
                 display_name,
                 description,
-                provider_key == "manual",
-                "mock-ready" if provider_key == "manual" else "needs credentials",
+                provider_key in {"manual", "rockauto"},
+                "manual lookup"
+                if provider_key == "rockauto"
+                else ("mock-ready" if provider_key == "manual" else "needs credentials"),
             ),
         )
 

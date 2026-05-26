@@ -31,7 +31,8 @@ textarea {
 }
 
 button,
-.file-button {
+.file-button,
+.external-button {
   border: 0;
   border-radius: 6px;
   cursor: pointer;
@@ -40,6 +41,7 @@ button,
 }
 
 button:focus-visible,
+.external-button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
@@ -516,6 +518,24 @@ textarea {
 .file-button {
   align-items: center;
   display: inline-flex;
+}
+
+.external-button {
+  align-items: center;
+  display: inline-flex;
+  text-decoration: none;
+}
+
+.external-lookup {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -2px 0 12px;
+}
+
+.external-lookup:empty {
+  display: none;
 }
 
 .file-button input {

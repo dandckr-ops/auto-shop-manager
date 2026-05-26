@@ -2,6 +2,7 @@ const STORAGE_KEY = "autoShopManager.v1";
 const API_STATE_URL = "/api/state";
 const API_PARTS_SEARCH_URL = "/api/parts/search";
 const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
+const ROCKAUTO_CATALOG_BASE_URL = "https://www.rockauto.com/en/catalog";
 const TAX_RATE = 0.08125;
 const ORDER_STATUSES = [
   "estimate created",
@@ -181,6 +182,14 @@ function vehicleLabel(vehicle) {
   return [vehicle.year, vehicle.make, vehicle.model, vehicle.engine].filter(Boolean).join(" ");
 }
 
+function rockAutoCatalogUrl(vehicle) {
+  const year = String(vehicle?.year || "").trim();
+  const make = String(vehicle?.make || "").trim();
+  const model = String(vehicle?.model || "").trim();
+  if (!year || !make || !model) return "";
+  return `${ROCKAUTO_CATALOG_BASE_URL}/${encodeURIComponent(`${make},${year},${model}`.toLowerCase())}`;
+}
+
 function setView(viewName) {
   currentView = viewName;
   Object.entries(views).forEach(([name, view]) => {
@@ -199,6 +208,7 @@ function render() {
   renderCustomerOptions();
   renderVehicleOptions();
   renderPartsTargetOptions();
+  renderRockAutoLookup();
   renderPartsProviders();
   renderCustomers();
   renderOrders();
@@ -289,6 +299,18 @@ function renderPartsTargetOptions() {
   select.value = previous;
 }
 
+function renderRockAutoLookup() {
+  const container = document.querySelector("#rockAutoLookup");
+  const partsVehicle = document.querySelector("#partsVehicle");
+  if (!container || !partsVehicle) return;
+  const vehicle = allVehicles().find((entry) => entry.id === partsVehicle.value);
+  const catalogUrl = rockAutoCatalogUrl(vehicle);
+  container.innerHTML = catalogUrl ? `
+    <a class="secondary external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>
+    <span class="muted">${escapeHtml(vehicle.year)} ${escapeHtml(vehicle.make)} ${escapeHtml(vehicle.model)}</span>
+  ` : "";
+}
+
 function renderPartsProviders() {
   const container = document.querySelector("#partsProviders");
   if (!container) return;
@@ -355,6 +377,7 @@ function renderOrders() {
         <strong>Total ${money(orderTotal(order).total)}</strong>
         <div class="item-actions">
           <button class="secondary small" data-action="edit-order" data-id="${order.id}">Edit</button>
+          <button class="secondary small" data-action="lookup-parts" data-id="${order.id}">Find Parts</button>
           <button class="secondary small" data-action="duplicate-order" data-id="${order.id}">Duplicate</button>
           <button class="secondary small" data-action="email-order" data-id="${order.id}">Email</button>
           <button class="danger small" data-action="delete-order" data-id="${order.id}">Delete</button>
@@ -635,6 +658,27 @@ function startOrderForCustomer(customerId) {
   setView("orders");
 }
 
+function openPartsLookupForOrder(orderId) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (!order) return;
+  setView("parts");
+  document.querySelector("#partsTargetOrder").value = order.id;
+  document.querySelector("#partsVehicle").value = order.vehicleId || "";
+  renderRockAutoLookup();
+}
+
+function openPartsLookupForCurrentForm() {
+  const orderId = document.querySelector("#orderId").value;
+  if (orderId) {
+    openPartsLookupForOrder(orderId);
+    return;
+  }
+  setView("parts");
+  document.querySelector("#partsTargetOrder").value = "";
+  document.querySelector("#partsVehicle").value = document.querySelector("#orderVehicle").value || "";
+  renderRockAutoLookup();
+}
+
 function handleListClick(event) {
   const control = event.target.closest("[data-action]");
   if (!control) return;
@@ -655,6 +699,9 @@ function handleListClick(event) {
   }
   if (action === "open-order") {
     openOrder(id);
+  }
+  if (action === "lookup-parts") {
+    openPartsLookupForOrder(id);
   }
   if (action === "duplicate-order") {
     const source = state.orders.find((order) => order.id === id);
@@ -809,6 +856,7 @@ document.querySelector("#orderCustomer").addEventListener("change", renderVehicl
 document.querySelector("#orderFilter").addEventListener("change", renderOrders);
 document.querySelector("#addLaborLine").addEventListener("click", () => addLine("labor"));
 document.querySelector("#addPartLine").addEventListener("click", () => addLine("part"));
+document.querySelector("#lookupPartsForCurrentOrder").addEventListener("click", openPartsLookupForCurrentForm);
 
 document.querySelector("#orderForm").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -827,6 +875,14 @@ document.querySelector("#deleteCurrentOrder").addEventListener("click", () => {
   if (orderId) deleteOrder(orderId);
 });
 document.querySelector("#partsSearchForm").addEventListener("submit", searchParts);
+document.querySelector("#partsVehicle").addEventListener("change", renderRockAutoLookup);
+document.querySelector("#partsTargetOrder").addEventListener("change", (event) => {
+  const order = state.orders.find((entry) => entry.id === event.target.value);
+  if (order?.vehicleId) {
+    document.querySelector("#partsVehicle").value = order.vehicleId;
+  }
+  renderRockAutoLookup();
+});
 
 document.querySelector("#clearCompletedParts").addEventListener("click", () => {
   state.partsOrders = state.partsOrders.filter((order) => order.status !== "Received");
