@@ -140,6 +140,8 @@ def init_db() -> None:
         conn.execute("alter table vehicles add column if not exists trim text not null default ''")
         conn.execute("alter table vehicles add column if not exists body text not null default ''")
         conn.execute("alter table vehicles add column if not exists source text not null default ''")
+        conn.execute("alter table vehicles add column if not exists plate text not null default ''")
+        conn.execute("alter table vehicles add column if not exists plate_state text not null default ''")
         conn.execute("alter table repair_orders alter column status set default 'estimate created'")
         migrate_order_statuses(conn)
         seed_parts_providers(conn)
@@ -221,7 +223,11 @@ def get_state() -> dict:
             "select id, name, phone, email, notes from customers order by name"
         ).fetchall()
         vehicles = conn.execute(
-            "select id, customer_id, year, make, model, engine, vin, trim, body, source from vehicles order by year desc, make, model"
+            """
+            select id, customer_id, year, make, model, engine, vin, trim, body, source, plate, plate_state
+            from vehicles
+            order by year desc, make, model
+            """
         ).fetchall()
         orders = conn.execute(
             "select id, customer_id, vehicle_id, status, odometer, concern, updated_at from repair_orders order by updated_at desc"
@@ -246,6 +252,8 @@ def get_state() -> dict:
                 "trim": row[7],
                 "body": row[8],
                 "source": row[9],
+                "plate": row[10],
+                "plateState": row[11],
             }
         )
 
@@ -512,8 +520,10 @@ def write_state(data: dict, existing_conn=None) -> None:
             for vehicle in customer.get("vehicles", []):
                 conn.execute(
                     """
-                    insert into vehicles (id, customer_id, year, make, model, engine, vin, trim, body, source)
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    insert into vehicles (
+                        id, customer_id, year, make, model, engine, vin, trim, body, source, plate, plate_state
+                    )
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         vehicle.get("id") or str(uuid.uuid4()),
@@ -526,6 +536,8 @@ def write_state(data: dict, existing_conn=None) -> None:
                         vehicle.get("trim") or "",
                         vehicle.get("body") or "",
                         vehicle.get("source") or "",
+                        vehicle.get("plate") or "",
+                        vehicle.get("plateState") or vehicle.get("plate_state") or "",
                     ),
                 )
 

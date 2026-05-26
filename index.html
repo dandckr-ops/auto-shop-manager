@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-4">
+    <link rel="stylesheet" href="styles.css?v=20260526-5">
   </head>
   <body>
     <div class="app-shell">
@@ -220,6 +220,8 @@
           </div>
         </label>
         <div class="grid-2">
+          <label>Plate<input id="vehiclePlate" autocomplete="off" placeholder="ABC123"></label>
+          <label>Plate State<input id="vehiclePlateState" autocomplete="off" placeholder="MN" maxlength="2"></label>
           <label>Year<input id="vehicleYear" inputmode="numeric" required></label>
           <label>Make<input id="vehicleMake" required autocomplete="off"></label>
           <label>Model<input id="vehicleModel" required list="vehicleModelSuggestions" autocomplete="off"></label>
@@ -236,6 +238,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-4"></script>
+    <script src="app.js?v=20260526-5"></script>
   </body>
 </html>

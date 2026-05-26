@@ -49,7 +49,9 @@ const starterData = {
           make: "Ford",
           model: "F-150",
           engine: "5.0L",
-          vin: ""
+          vin: "",
+          plate: "",
+          plateState: ""
         }
       ]
     }
@@ -423,6 +425,7 @@ function renderCustomers() {
           <span>
             ${escapeHtml(vehicleLabel(vehicle))}
             ${vehicle.body ? `- ${escapeHtml(vehicle.body)}` : ""}
+            ${vehicle.plate ? `- ${escapeHtml([vehicle.plateState, vehicle.plate].filter(Boolean).join(" "))}` : ""}
             ${vehicle.vin ? `- VIN ${escapeHtml(vehicle.vin)}` : ""}
             ${vehicle.source ? `<small class="source-tag">${escapeHtml(vehicle.source)}</small>` : ""}
           </span>
@@ -555,6 +558,8 @@ function vehicleFromForm() {
     trim: document.querySelector("#vehicleTrim").value.trim(),
     body: document.querySelector("#vehicleBody").value.trim(),
     vin: document.querySelector("#vehicleVin").value.trim().toUpperCase(),
+    plate: document.querySelector("#vehiclePlate").value.trim().toUpperCase(),
+    plateState: document.querySelector("#vehiclePlateState").value.trim().toUpperCase(),
     source: document.querySelector("#vehicleLookupStatus").dataset.source || ""
   };
 }
