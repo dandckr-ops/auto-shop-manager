@@ -2,17 +2,20 @@ import json
 import math
 import os
 import smtplib
+import urllib.error
+import urllib.request
 import uuid
 from email.message import EmailMessage
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse, parse_qs
 
 import psycopg
 
 
 APP_DIR = Path(__file__).resolve().parent
 APP_DATA_DIR = Path(os.environ.get("APP_DATA_DIR", "/data"))
+NHTSA_API_BASE = "https://vpic.nhtsa.dot.gov/api/vehicles"
 TAX_RATE = 0.08125
 ORDER_STATUSES = [
     "estimate created",
@@ -134,6 +137,9 @@ def init_db() -> None:
         conn.execute("create index if not exists idx_order_lines_order on order_lines(order_id)")
         conn.execute("create index if not exists idx_parts_orders_status on parts_orders(status)")
         conn.execute("create table if not exists app_state_archive (id text primary key, data jsonb not null, updated_at timestamptz not null default now())")
+        conn.execute("alter table vehicles add column if not exists trim text not null default ''")
+        conn.execute("alter table vehicles add column if not exists body text not null default ''")
+        conn.execute("alter table vehicles add column if not exists source text not null default ''")
         conn.execute("alter table repair_orders alter column status set default 'estimate created'")
         migrate_order_statuses(conn)
         seed_parts_providers(conn)
@@ -215,7 +221,7 @@ def get_state() -> dict:
             "select id, name, phone, email, notes from customers order by name"
         ).fetchall()
         vehicles = conn.execute(
-            "select id, customer_id, year, make, model, engine, vin from vehicles order by year desc, make, model"
+            "select id, customer_id, year, make, model, engine, vin, trim, body, source from vehicles order by year desc, make, model"
         ).fetchall()
         orders = conn.execute(
             "select id, customer_id, vehicle_id, status, odometer, concern, updated_at from repair_orders order by updated_at desc"
@@ -237,6 +243,9 @@ def get_state() -> dict:
                 "model": row[4],
                 "engine": row[5],
                 "vin": row[6],
+                "trim": row[7],
+                "body": row[8],
+                "source": row[9],
             }
         )
 
@@ -369,6 +378,111 @@ def search_parts(data: dict) -> list[dict]:
     return quotes
 
 
+def get_query_value(query: dict[str, list[str]], key: str) -> str:
+    values = query.get(key) or [""]
+    return values[0].strip()
+
+
+def fetch_nhtsa(path: str) -> dict:
+    url = f"{NHTSA_API_BASE}/{path}"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "AutoShopManager/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=12) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"NHTSA lookup failed: {exc.reason}") from exc
+    except (TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError("NHTSA lookup returned an invalid response") from exc
+
+
+def clean_vehicle_value(value: str | None) -> str:
+    return "" if value in {None, "Not Applicable"} else str(value).strip()
+
+
+def build_engine_label(result: dict) -> str:
+    parts = []
+    displacement = clean_vehicle_value(result.get("DisplacementL"))
+    cylinders = clean_vehicle_value(result.get("EngineCylinders"))
+    engine_model = clean_vehicle_value(result.get("EngineModel"))
+    fuel_type = clean_vehicle_value(result.get("FuelTypePrimary"))
+
+    if displacement:
+        parts.append(f"{displacement}L")
+    if cylinders:
+        parts.append(f"{cylinders} cyl")
+    if engine_model:
+        parts.append(engine_model)
+    if fuel_type:
+        parts.append(fuel_type)
+    return " ".join(parts)
+
+
+def format_vehicle_make(value: str) -> str:
+    cleaned = clean_vehicle_value(value)
+    special_names = {"BMW", "GMC", "MINI", "RAM", "SRT"}
+    if cleaned.upper() in special_names:
+        return cleaned.upper()
+    return cleaned.title()
+
+
+def decode_vehicle_vin(query: dict[str, list[str]]) -> dict:
+    vin = get_query_value(query, "vin").upper().replace(" ", "")
+    model_year = get_query_value(query, "year")
+    if len(vin) < 8:
+        return {"ok": False, "error": "Enter at least 8 VIN characters."}
+
+    path = f"DecodeVinValues/{quote(vin)}?format=json"
+    if model_year:
+        path += f"&modelyear={quote(model_year)}"
+    data = fetch_nhtsa(path)
+    results = data.get("Results") or []
+    result = results[0] if results else {}
+
+    warnings = []
+    error_code = clean_vehicle_value(result.get("ErrorCode"))
+    error_text = clean_vehicle_value(result.get("ErrorText"))
+    if error_code and error_code != "0" and error_text:
+        warnings.append(error_text)
+
+    vehicle = {
+        "vin": vin,
+        "year": clean_vehicle_value(result.get("ModelYear")) or model_year,
+        "make": format_vehicle_make(result.get("Make")),
+        "model": clean_vehicle_value(result.get("Model")),
+        "engine": build_engine_label(result),
+        "trim": clean_vehicle_value(result.get("Trim")),
+        "body": clean_vehicle_value(result.get("BodyClass")),
+        "source": "NHTSA vPIC",
+    }
+    return {"ok": True, "vehicle": vehicle, "warnings": warnings}
+
+
+def get_vehicle_models(query: dict[str, list[str]]) -> dict:
+    make = get_query_value(query, "make")
+    year = get_query_value(query, "year")
+    if not make or not year:
+        return {"ok": False, "error": "Make and year are required."}
+
+    rows = []
+    vehicle_types = ["passenger car", "truck", "multipurpose passenger vehicle"]
+    for vehicle_type in vehicle_types:
+        path = (
+            f"GetModelsForMakeYear/make/{quote(make)}/modelyear/{quote(year)}"
+            f"/vehicletype/{quote(vehicle_type)}?format=json"
+        )
+        rows.extend(fetch_nhtsa(path).get("Results") or [])
+
+    if not rows:
+        path = f"GetModelsForMakeYear/make/{quote(make)}/modelyear/{quote(year)}?format=json"
+        rows = fetch_nhtsa(path).get("Results") or []
+
+    models = sorted({clean_vehicle_value(row.get("Model_Name")) for row in rows if clean_vehicle_value(row.get("Model_Name"))})
+    return {"ok": True, "models": models, "source": "NHTSA vPIC"}
+
+
 def write_state(data: dict, existing_conn=None) -> None:
     conn_context = existing_conn if existing_conn is not None else connect()
     should_close = existing_conn is None
@@ -398,8 +512,8 @@ def write_state(data: dict, existing_conn=None) -> None:
             for vehicle in customer.get("vehicles", []):
                 conn.execute(
                     """
-                    insert into vehicles (id, customer_id, year, make, model, engine, vin)
-                    values (%s, %s, %s, %s, %s, %s, %s)
+                    insert into vehicles (id, customer_id, year, make, model, engine, vin, trim, body, source)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         vehicle.get("id") or str(uuid.uuid4()),
@@ -409,6 +523,9 @@ def write_state(data: dict, existing_conn=None) -> None:
                         vehicle.get("model") or "",
                         vehicle.get("engine") or "",
                         vehicle.get("vin") or "",
+                        vehicle.get("trim") or "",
+                        vehicle.get("body") or "",
+                        vehicle.get("source") or "",
                     ),
                 )
 
@@ -602,7 +719,9 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        query = parse_qs(parsed_url.query)
         if path == "/api/health":
             self.send_json({"ok": True, "emailConfigured": bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))})
             return
@@ -611,6 +730,18 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/api/parts/providers":
             self.send_json({"providers": get_parts_providers()})
+            return
+        if path == "/api/vehicles/decode-vin":
+            try:
+                self.send_json(decode_vehicle_vin(query))
+            except RuntimeError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=502)
+            return
+        if path == "/api/vehicles/models":
+            try:
+                self.send_json(get_vehicle_models(query))
+            except RuntimeError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=502)
             return
         super().do_GET()
 

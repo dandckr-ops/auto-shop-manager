@@ -2,6 +2,8 @@ const STORAGE_KEY = "autoShopManager.v1";
 const API_STATE_URL = "/api/state";
 const API_PARTS_SEARCH_URL = "/api/parts/search";
 const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
+const API_VEHICLE_DECODE_URL = "/api/vehicles/decode-vin";
+const API_VEHICLE_MODELS_URL = "/api/vehicles/models";
 const ROCKAUTO_CATALOG_BASE_URL = "https://www.rockauto.com/en/catalog";
 const TAX_RATE = 0.08125;
 const ORDER_STATUSES = [
@@ -179,7 +181,7 @@ function allVehicles() {
 
 function vehicleLabel(vehicle) {
   if (!vehicle) return "No vehicle";
-  return [vehicle.year, vehicle.make, vehicle.model, vehicle.engine].filter(Boolean).join(" ");
+  return [vehicle.year, vehicle.make, vehicle.model, vehicle.trim, vehicle.engine].filter(Boolean).join(" ");
 }
 
 function normalizeRockAutoMake(make) {
@@ -417,7 +419,14 @@ function renderCustomers() {
       </div>
       <span class="muted">${escapeHtml(customer.phone || "No phone")} ${customer.email ? `- ${escapeHtml(customer.email)}` : ""}</span>
       <div class="vehicle-list">
-        ${(customer.vehicles || []).map((vehicle) => `<span>${escapeHtml(vehicleLabel(vehicle))} ${vehicle.vin ? `- VIN ${escapeHtml(vehicle.vin)}` : ""}</span>`).join("") || "<span>No vehicles yet</span>"}
+        ${(customer.vehicles || []).map((vehicle) => `
+          <span>
+            ${escapeHtml(vehicleLabel(vehicle))}
+            ${vehicle.body ? `- ${escapeHtml(vehicle.body)}` : ""}
+            ${vehicle.vin ? `- VIN ${escapeHtml(vehicle.vin)}` : ""}
+            ${vehicle.source ? `<small class="source-tag">${escapeHtml(vehicle.source)}</small>` : ""}
+          </span>
+        `).join("") || "<span>No vehicles yet</span>"}
       </div>
       <div class="item-actions">
         <button class="secondary small" data-action="edit-customer" data-id="${customer.id}">Edit</button>
@@ -506,28 +515,111 @@ function fillCustomerForm(customer) {
   setView("customers");
 }
 
-function promptVehicle(customerId) {
-  const year = prompt("Year");
-  if (year === null) return;
-  const make = prompt("Make");
-  if (make === null) return;
-  const model = prompt("Model");
-  if (model === null) return;
-  const engine = prompt("Engine");
-  if (engine === null) return;
-  const vin = prompt("VIN, optional") || "";
-  const customer = state.customers.find((entry) => entry.id === customerId);
-  customer.vehicles = customer.vehicles || [];
-  customer.vehicles.push({
+function setVehicleLookupStatus(message, isError = false) {
+  const status = document.querySelector("#vehicleLookupStatus");
+  status.textContent = message || "";
+  status.classList.toggle("error-text", isError);
+}
+
+function openVehicleDialog(customerId) {
+  const form = document.querySelector("#vehicleForm");
+  form.reset();
+  document.querySelector("#vehicleCustomerId").value = customerId;
+  document.querySelector("#vehicleModelSuggestions").innerHTML = "";
+  document.querySelector("#vehicleLookupStatus").dataset.source = "";
+  setVehicleLookupStatus("Enter a VIN to decode, or fill year/make/model manually.");
+  const dialog = document.querySelector("#vehicleDialog");
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+}
+
+function closeVehicleDialog() {
+  const dialog = document.querySelector("#vehicleDialog");
+  if (typeof dialog.close === "function") {
+    dialog.close();
+  } else {
+    dialog.removeAttribute("open");
+  }
+}
+
+function vehicleFromForm() {
+  return {
     id: crypto.randomUUID(),
-    year: year.trim(),
-    make: make.trim(),
-    model: model.trim(),
-    engine: engine.trim(),
-    vin: vin.trim()
-  });
-  saveState();
+    year: document.querySelector("#vehicleYear").value.trim(),
+    make: document.querySelector("#vehicleMake").value.trim(),
+    model: document.querySelector("#vehicleModel").value.trim(),
+    engine: document.querySelector("#vehicleEngine").value.trim(),
+    trim: document.querySelector("#vehicleTrim").value.trim(),
+    body: document.querySelector("#vehicleBody").value.trim(),
+    vin: document.querySelector("#vehicleVin").value.trim().toUpperCase(),
+    source: document.querySelector("#vehicleLookupStatus").dataset.source || ""
+  };
+}
+
+async function saveVehicleFromForm(event) {
+  event.preventDefault();
+  const customerId = document.querySelector("#vehicleCustomerId").value;
+  const customer = state.customers.find((entry) => entry.id === customerId);
+  if (!customer) return;
+  customer.vehicles = customer.vehicles || [];
+  customer.vehicles.push(vehicleFromForm());
+  await saveState();
+  closeVehicleDialog();
   render();
+}
+
+function applyDecodedVehicle(vehicle) {
+  document.querySelector("#vehicleYear").value = vehicle.year || document.querySelector("#vehicleYear").value;
+  document.querySelector("#vehicleMake").value = vehicle.make || document.querySelector("#vehicleMake").value;
+  document.querySelector("#vehicleModel").value = vehicle.model || document.querySelector("#vehicleModel").value;
+  document.querySelector("#vehicleEngine").value = vehicle.engine || document.querySelector("#vehicleEngine").value;
+  document.querySelector("#vehicleTrim").value = vehicle.trim || "";
+  document.querySelector("#vehicleBody").value = vehicle.body || "";
+  document.querySelector("#vehicleVin").value = vehicle.vin || document.querySelector("#vehicleVin").value;
+  document.querySelector("#vehicleLookupStatus").dataset.source = vehicle.source || "";
+}
+
+async function decodeVehicleVin() {
+  const vin = document.querySelector("#vehicleVin").value.trim();
+  const year = document.querySelector("#vehicleYear").value.trim();
+  if (!vin) {
+    setVehicleLookupStatus("Enter a VIN first.", true);
+    return;
+  }
+  setVehicleLookupStatus("Decoding VIN with NHTSA vPIC...");
+  try {
+    const url = `${API_VEHICLE_DECODE_URL}?vin=${encodeURIComponent(vin)}${year ? `&year=${encodeURIComponent(year)}` : ""}`;
+    const response = await fetch(url, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "VIN decode failed");
+    applyDecodedVehicle(payload.vehicle || {});
+    loadVehicleModelSuggestions();
+    const warning = payload.warnings?.[0] ? ` ${payload.warnings[0]}` : "";
+    setVehicleLookupStatus(`Decoded by NHTSA vPIC.${warning}`);
+  } catch (error) {
+    setVehicleLookupStatus(error.message, true);
+  }
+}
+
+async function loadVehicleModelSuggestions() {
+  const year = document.querySelector("#vehicleYear").value.trim();
+  const make = document.querySelector("#vehicleMake").value.trim();
+  const list = document.querySelector("#vehicleModelSuggestions");
+  if (!year || !make) return;
+  try {
+    const url = `${API_VEHICLE_MODELS_URL}?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`;
+    const response = await fetch(url, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) return;
+    list.innerHTML = (payload.models || [])
+      .map((model) => `<option value="${escapeHtml(model)}"></option>`)
+      .join("");
+  } catch {
+    // Model suggestions are helpful, but manual entry should never be blocked.
+  }
 }
 
 function blankLine(type) {
@@ -764,7 +856,7 @@ function handleListClick(event) {
     fillCustomerForm(state.customers.find((customer) => customer.id === id));
   }
   if (action === "add-vehicle") {
-    promptVehicle(id);
+    openVehicleDialog(id);
   }
   if (action === "start-order") {
     startOrderForCustomer(id);
@@ -927,6 +1019,12 @@ document.querySelector("#customerForm").addEventListener("submit", (event) => {
 
 document.querySelector("#clearCustomerForm").addEventListener("click", clearCustomerForm);
 document.querySelector("#customerSearch").addEventListener("input", renderCustomers);
+document.querySelector("#vehicleForm").addEventListener("submit", saveVehicleFromForm);
+document.querySelector("#decodeVin").addEventListener("click", decodeVehicleVin);
+document.querySelector("#cancelVehicle").addEventListener("click", closeVehicleDialog);
+document.querySelector("#closeVehicleDialog").addEventListener("click", closeVehicleDialog);
+document.querySelector("#vehicleYear").addEventListener("change", loadVehicleModelSuggestions);
+document.querySelector("#vehicleMake").addEventListener("change", loadVehicleModelSuggestions);
 document.querySelector("#orderCustomer").addEventListener("change", renderVehicleOptions);
 document.querySelector("#orderFilter").addEventListener("change", renderOrders);
 document.querySelector("#addLaborLine").addEventListener("click", () => addLine("labor"));

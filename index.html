@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-3">
+    <link rel="stylesheet" href="styles.css?v=20260526-4">
   </head>
   <body>
     <div class="app-shell">
@@ -206,6 +206,36 @@
       </div>
     </template>
 
-    <script src="app.js?v=20260526-3"></script>
+    <dialog id="vehicleDialog" class="dialog">
+      <form id="vehicleForm" class="dialog-panel">
+        <input type="hidden" id="vehicleCustomerId">
+        <div class="panel-header">
+          <h2>Add Vehicle</h2>
+          <button type="button" class="icon-button" id="closeVehicleDialog" aria-label="Close">x</button>
+        </div>
+        <label>VIN
+          <div class="field-with-button">
+            <input id="vehicleVin" autocomplete="off">
+            <button type="button" class="secondary small" id="decodeVin">Decode VIN</button>
+          </div>
+        </label>
+        <div class="grid-2">
+          <label>Year<input id="vehicleYear" inputmode="numeric" required></label>
+          <label>Make<input id="vehicleMake" required autocomplete="off"></label>
+          <label>Model<input id="vehicleModel" required list="vehicleModelSuggestions" autocomplete="off"></label>
+          <label>Engine<input id="vehicleEngine" autocomplete="off"></label>
+          <label>Trim<input id="vehicleTrim" autocomplete="off"></label>
+          <label>Body<input id="vehicleBody" autocomplete="off"></label>
+        </div>
+        <datalist id="vehicleModelSuggestions"></datalist>
+        <p id="vehicleLookupStatus" class="form-status muted" aria-live="polite"></p>
+        <div class="form-actions">
+          <button type="button" class="secondary" id="cancelVehicle">Cancel</button>
+          <button class="primary" type="submit">Save Vehicle</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js?v=20260526-4"></script>
   </body>
 </html>

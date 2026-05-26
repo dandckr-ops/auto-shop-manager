@@ -8,6 +8,11 @@ A small, dependency-free repair shop manager for a one-person shop.
 docker compose up -d --build
 ```
 
+Run that from the folder containing `docker-compose.yml`. Compose reads the
+service definitions from that file: the app image is built from this folder
+because the `app` service has `build: .`, and Postgres is pulled from
+`postgres:17` because the `db` service has `image: postgres:17`.
+
 Then open `http://SERVER_IP:8787`.
 
 Live data is stored in the `auto-shop-postgres-data` Docker volume. The app also
@@ -46,6 +51,7 @@ real `.env` or `.env.sso` files.
 ## Current scope
 
 - Customers and vehicles
+- NHTSA vPIC VIN decode and model suggestions for vehicle entry
 - Estimates / repair orders
 - Labor and parts lines
 - Mock parts lookup with supplier pricing

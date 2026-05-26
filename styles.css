@@ -251,6 +251,12 @@ textarea {
   resize: vertical;
 }
 
+.field-with-button {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .grid-2,
 .stat-grid {
   display: grid;
@@ -436,6 +442,45 @@ textarea {
   gap: 4px;
 }
 
+.source-tag {
+  background: #edf1f4;
+  border-radius: 999px;
+  color: #53636d;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+  padding: 2px 7px;
+}
+
+.dialog {
+  background: transparent;
+  border: 0;
+  max-width: min(640px, calc(100vw - 28px));
+  padding: 0;
+  width: 640px;
+}
+
+.dialog::backdrop {
+  background: rgba(23, 32, 39, 0.42);
+}
+
+.dialog-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 22px 60px rgba(23, 32, 39, 0.22);
+  padding: 18px;
+}
+
+.form-status {
+  min-height: 20px;
+}
+
+.error-text {
+  color: #9d2f24;
+}
+
 .line-editor {
   border-top: 1px solid var(--line);
   margin-top: 14px;
@@ -590,6 +635,10 @@ textarea {
   .line-total,
   .remove-line {
     grid-column: span 1;
+  }
+
+  .field-with-button {
+    grid-template-columns: 1fr;
   }
 }
 
