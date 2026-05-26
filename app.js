@@ -5,6 +5,7 @@ const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
 const API_VEHICLE_DECODE_URL = "/api/vehicles/decode-vin";
 const API_VEHICLE_MODELS_URL = "/api/vehicles/models";
 const ROCKAUTO_CATALOG_BASE_URL = "https://www.rockauto.com/en/catalog";
+const MANUAL_MODEL_VALUE = "__manual_model__";
 const TAX_RATE = 0.08125;
 const ORDER_STATUSES = [
   "estimate created",
@@ -528,7 +529,7 @@ function openVehicleDialog(customerId) {
   const form = document.querySelector("#vehicleForm");
   form.reset();
   document.querySelector("#vehicleCustomerId").value = customerId;
-  document.querySelector("#vehicleModelSuggestions").innerHTML = "";
+  resetVehicleModelOptions();
   document.querySelector("#vehicleLookupStatus").dataset.source = "";
   setVehicleLookupStatus("Enter a VIN to decode, or fill year/make/model manually.");
   const dialog = document.querySelector("#vehicleDialog");
@@ -553,7 +554,7 @@ function vehicleFromForm() {
     id: crypto.randomUUID(),
     year: document.querySelector("#vehicleYear").value.trim(),
     make: document.querySelector("#vehicleMake").value.trim(),
-    model: document.querySelector("#vehicleModel").value.trim(),
+    model: selectedVehicleModel(),
     engine: document.querySelector("#vehicleEngine").value.trim(),
     trim: document.querySelector("#vehicleTrim").value.trim(),
     body: document.querySelector("#vehicleBody").value.trim(),
@@ -562,6 +563,14 @@ function vehicleFromForm() {
     plateState: document.querySelector("#vehiclePlateState").value.trim().toUpperCase(),
     source: document.querySelector("#vehicleLookupStatus").dataset.source || ""
   };
+}
+
+function selectedVehicleModel() {
+  const modelSelect = document.querySelector("#vehicleModel");
+  if (modelSelect.value === MANUAL_MODEL_VALUE) {
+    return document.querySelector("#vehicleModelCustom").value.trim();
+  }
+  return modelSelect.value.trim();
 }
 
 async function saveVehicleFromForm(event) {
@@ -579,7 +588,7 @@ async function saveVehicleFromForm(event) {
 function applyDecodedVehicle(vehicle) {
   document.querySelector("#vehicleYear").value = vehicle.year || document.querySelector("#vehicleYear").value;
   document.querySelector("#vehicleMake").value = vehicle.make || document.querySelector("#vehicleMake").value;
-  document.querySelector("#vehicleModel").value = vehicle.model || document.querySelector("#vehicleModel").value;
+  setVehicleModelOptions([], vehicle.model || selectedVehicleModel());
   document.querySelector("#vehicleEngine").value = vehicle.engine || document.querySelector("#vehicleEngine").value;
   document.querySelector("#vehicleTrim").value = vehicle.trim || "";
   document.querySelector("#vehicleBody").value = vehicle.body || "";
@@ -601,7 +610,7 @@ async function decodeVehicleVin() {
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || "VIN decode failed");
     applyDecodedVehicle(payload.vehicle || {});
-    loadVehicleModelSuggestions();
+    await loadVehicleModelSuggestions(payload.vehicle?.model || "");
     const warning = payload.warnings?.[0] ? ` ${payload.warnings[0]}` : "";
     setVehicleLookupStatus(`Decoded by NHTSA vPIC.${warning}`);
   } catch (error) {
@@ -609,19 +618,59 @@ async function decodeVehicleVin() {
   }
 }
 
-async function loadVehicleModelSuggestions() {
+function resetVehicleModelOptions() {
+  const modelSelect = document.querySelector("#vehicleModel");
+  modelSelect.innerHTML = `
+    <option value="">Enter year and make first</option>
+    <option value="${MANUAL_MODEL_VALUE}">Other / manual entry</option>
+  `;
+  document.querySelector("#vehicleModelCustom").value = "";
+  toggleManualVehicleModel();
+}
+
+function setVehicleModelOptions(models, selectedModel = "") {
+  const modelSelect = document.querySelector("#vehicleModel");
+  const normalizedModels = [...new Set((models || []).filter(Boolean))];
+  const hasSelectedModel = selectedModel && normalizedModels.includes(selectedModel);
+  const options = [
+    `<option value="">${normalizedModels.length ? "Choose model" : "No model list loaded"}</option>`,
+    ...normalizedModels.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`),
+    `<option value="${MANUAL_MODEL_VALUE}">Other / manual entry</option>`
+  ];
+  modelSelect.innerHTML = options.join("");
+
+  if (selectedModel && hasSelectedModel) {
+    modelSelect.value = selectedModel;
+    document.querySelector("#vehicleModelCustom").value = "";
+  } else if (selectedModel) {
+    modelSelect.value = MANUAL_MODEL_VALUE;
+    document.querySelector("#vehicleModelCustom").value = selectedModel;
+  }
+  toggleManualVehicleModel();
+}
+
+function toggleManualVehicleModel() {
+  const useManualModel = document.querySelector("#vehicleModel").value === MANUAL_MODEL_VALUE;
+  const manualLabel = document.querySelector("#vehicleModelCustomLabel");
+  const manualInput = document.querySelector("#vehicleModelCustom");
+  manualLabel.hidden = !useManualModel;
+  manualInput.required = useManualModel;
+}
+
+async function loadVehicleModelSuggestions(selectedModel = "") {
   const year = document.querySelector("#vehicleYear").value.trim();
   const make = document.querySelector("#vehicleMake").value.trim();
-  const list = document.querySelector("#vehicleModelSuggestions");
-  if (!year || !make) return;
+  if (!year || !make) {
+    resetVehicleModelOptions();
+    return;
+  }
+  setVehicleModelOptions([], selectedModel || selectedVehicleModel());
   try {
     const url = `${API_VEHICLE_MODELS_URL}?year=${encodeURIComponent(year)}&make=${encodeURIComponent(make)}`;
     const response = await fetch(url, { cache: "no-store" });
     const payload = await response.json();
     if (!response.ok || !payload.ok) return;
-    list.innerHTML = (payload.models || [])
-      .map((model) => `<option value="${escapeHtml(model)}"></option>`)
-      .join("");
+    setVehicleModelOptions(payload.models || [], selectedModel || selectedVehicleModel());
   } catch {
     // Model suggestions are helpful, but manual entry should never be blocked.
   }
@@ -1028,8 +1077,9 @@ document.querySelector("#vehicleForm").addEventListener("submit", saveVehicleFro
 document.querySelector("#decodeVin").addEventListener("click", decodeVehicleVin);
 document.querySelector("#cancelVehicle").addEventListener("click", closeVehicleDialog);
 document.querySelector("#closeVehicleDialog").addEventListener("click", closeVehicleDialog);
-document.querySelector("#vehicleYear").addEventListener("change", loadVehicleModelSuggestions);
-document.querySelector("#vehicleMake").addEventListener("change", loadVehicleModelSuggestions);
+document.querySelector("#vehicleModel").addEventListener("change", toggleManualVehicleModel);
+document.querySelector("#vehicleYear").addEventListener("change", () => loadVehicleModelSuggestions());
+document.querySelector("#vehicleMake").addEventListener("change", () => loadVehicleModelSuggestions());
 document.querySelector("#orderCustomer").addEventListener("change", renderVehicleOptions);
 document.querySelector("#orderFilter").addEventListener("change", renderOrders);
 document.querySelector("#addLaborLine").addEventListener("click", () => addLine("labor"));

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-5">
+    <link rel="stylesheet" href="styles.css?v=20260526-6">
   </head>
   <body>
     <div class="app-shell">
@@ -224,12 +224,15 @@
           <label>Plate State<input id="vehiclePlateState" autocomplete="off" placeholder="MN" maxlength="2"></label>
           <label>Year<input id="vehicleYear" inputmode="numeric" required></label>
           <label>Make<input id="vehicleMake" required autocomplete="off"></label>
-          <label>Model<input id="vehicleModel" required list="vehicleModelSuggestions" autocomplete="off"></label>
+          <label>Model<select id="vehicleModel" required>
+            <option value="">Enter year and make first</option>
+            <option value="__manual_model__">Other / manual entry</option>
+          </select></label>
+          <label id="vehicleModelCustomLabel" hidden>Manual Model<input id="vehicleModelCustom" autocomplete="off"></label>
           <label>Engine<input id="vehicleEngine" autocomplete="off"></label>
           <label>Trim<input id="vehicleTrim" autocomplete="off"></label>
           <label>Body<input id="vehicleBody" autocomplete="off"></label>
         </div>
-        <datalist id="vehicleModelSuggestions"></datalist>
         <p id="vehicleLookupStatus" class="form-status muted" aria-live="polite"></p>
         <div class="form-actions">
           <button type="button" class="secondary" id="cancelVehicle">Cancel</button>
@@ -238,6 +241,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-5"></script>
+    <script src="app.js?v=20260526-6"></script>
   </body>
 </html>
