@@ -299,16 +299,36 @@ function renderPartsTargetOptions() {
   select.value = previous;
 }
 
+function selectedPartsVehicle() {
+  return allVehicles().find((entry) => entry.id === document.querySelector("#partsVehicle")?.value);
+}
+
 function renderRockAutoLookup() {
   const container = document.querySelector("#rockAutoLookup");
-  const partsVehicle = document.querySelector("#partsVehicle");
-  if (!container || !partsVehicle) return;
-  const vehicle = allVehicles().find((entry) => entry.id === partsVehicle.value);
+  if (!container) return;
+  const vehicle = selectedPartsVehicle();
   const catalogUrl = rockAutoCatalogUrl(vehicle);
   container.innerHTML = catalogUrl ? `
     <a class="secondary external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>
     <span class="muted">${escapeHtml(vehicle.year)} ${escapeHtml(vehicle.make)} ${escapeHtml(vehicle.model)}</span>
   ` : "";
+}
+
+function providerSummary(provider) {
+  if (provider.key === "rockauto") return "Select a vehicle below to open the matching RockAuto catalog.";
+  if (provider.key === "manual") return "Use for phone quotes, walk-ins, and one-off vendors.";
+  return provider.enabled ? "Configured" : "Needs credentials";
+}
+
+function renderProviderAction(provider) {
+  if (provider.key !== "rockauto") return "";
+  const vehicle = selectedPartsVehicle();
+  const catalogUrl = rockAutoCatalogUrl(vehicle);
+  return `<div class="item-actions">
+    ${catalogUrl
+      ? `<a class="secondary small external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>`
+      : `<button type="button" class="secondary small" disabled>Select vehicle below</button>`}
+  </div>`;
 }
 
 function renderPartsProviders() {
@@ -321,9 +341,15 @@ function renderPartsProviders() {
         <span class="pill">${escapeHtml(provider.status)}</span>
       </div>
       <span class="muted">${escapeHtml(provider.description || "Provider adapter staged")}</span>
-      <span>${provider.enabled ? "Ready for credentials" : "Disabled"}</span>
+      <span>${escapeHtml(providerSummary(provider))}</span>
+      ${renderProviderAction(provider)}
     </article>
   `).join("") || `<p class="muted">Provider status will appear here.</p>`;
+}
+
+function refreshPartsLookupLinks() {
+  renderRockAutoLookup();
+  renderPartsProviders();
 }
 
 function renderCustomers() {
@@ -664,7 +690,7 @@ function openPartsLookupForOrder(orderId) {
   setView("parts");
   document.querySelector("#partsTargetOrder").value = order.id;
   document.querySelector("#partsVehicle").value = order.vehicleId || "";
-  renderRockAutoLookup();
+  refreshPartsLookupLinks();
 }
 
 function openPartsLookupForCurrentForm() {
@@ -676,7 +702,7 @@ function openPartsLookupForCurrentForm() {
   setView("parts");
   document.querySelector("#partsTargetOrder").value = "";
   document.querySelector("#partsVehicle").value = document.querySelector("#orderVehicle").value || "";
-  renderRockAutoLookup();
+  refreshPartsLookupLinks();
 }
 
 function handleListClick(event) {
@@ -875,13 +901,13 @@ document.querySelector("#deleteCurrentOrder").addEventListener("click", () => {
   if (orderId) deleteOrder(orderId);
 });
 document.querySelector("#partsSearchForm").addEventListener("submit", searchParts);
-document.querySelector("#partsVehicle").addEventListener("change", renderRockAutoLookup);
+document.querySelector("#partsVehicle").addEventListener("change", refreshPartsLookupLinks);
 document.querySelector("#partsTargetOrder").addEventListener("change", (event) => {
   const order = state.orders.find((entry) => entry.id === event.target.value);
   if (order?.vehicleId) {
     document.querySelector("#partsVehicle").value = order.vehicleId;
   }
-  renderRockAutoLookup();
+  refreshPartsLookupLinks();
 });
 
 document.querySelector("#clearCompletedParts").addEventListener("click", () => {

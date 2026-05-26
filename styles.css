@@ -168,6 +168,11 @@ h3 {
   color: var(--ink);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .danger {
   background: #9d2f24;
   color: #ffffff;
