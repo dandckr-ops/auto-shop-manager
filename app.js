@@ -6,6 +6,7 @@ const API_VEHICLE_DECODE_URL = "/api/vehicles/decode-vin";
 const API_VEHICLE_MODELS_URL = "/api/vehicles/models";
 const ROCKAUTO_CATALOG_BASE_URL = "https://www.rockauto.com/en/catalog";
 const MANUAL_MODEL_VALUE = "__manual_model__";
+const VIN_BARCODE_FORMATS = ["code_39", "code_128", "data_matrix", "qr_code", "pdf417"];
 const TAX_RATE = 0.08125;
 const ORDER_STATUSES = [
   "estimate created",
@@ -65,6 +66,10 @@ let state = structuredClone(starterData);
 let currentView = "dashboard";
 let apiAvailable = false;
 let partsProviders = [];
+let vinScannerStream = null;
+let vinScannerFrame = null;
+let vinScannerDetector = null;
+let vinScannerBusy = false;
 
 const views = {
   dashboard: {
@@ -525,11 +530,18 @@ function setVehicleLookupStatus(message, isError = false) {
   status.classList.toggle("error-text", isError);
 }
 
+function setVinScannerStatus(message, isError = false) {
+  const status = document.querySelector("#vinScannerStatus");
+  status.textContent = message || "";
+  status.classList.toggle("error-text", isError);
+}
+
 function openVehicleDialog(customerId) {
   const form = document.querySelector("#vehicleForm");
   form.reset();
   document.querySelector("#vehicleCustomerId").value = customerId;
   resetVehicleModelOptions();
+  stopVinScanner();
   document.querySelector("#vehicleLookupStatus").dataset.source = "";
   setVehicleLookupStatus("Enter a VIN to decode, or fill year/make/model manually.");
   const dialog = document.querySelector("#vehicleDialog");
@@ -541,12 +553,117 @@ function openVehicleDialog(customerId) {
 }
 
 function closeVehicleDialog() {
+  stopVinScanner();
   const dialog = document.querySelector("#vehicleDialog");
   if (typeof dialog.close === "function") {
     dialog.close();
   } else {
     dialog.removeAttribute("open");
   }
+}
+
+function extractVinFromScan(rawValue) {
+  const normalized = String(rawValue || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const match = normalized.match(/[A-HJ-NPR-Z0-9]{17}/);
+  return match ? match[0] : "";
+}
+
+async function getVinBarcodeDetector() {
+  if (!("BarcodeDetector" in window)) {
+    throw new Error("Barcode scanning is not supported by this browser.");
+  }
+
+  if (vinScannerDetector) return vinScannerDetector;
+
+  let formats = VIN_BARCODE_FORMATS;
+  if (typeof BarcodeDetector.getSupportedFormats === "function") {
+    const supportedFormats = await BarcodeDetector.getSupportedFormats();
+    formats = VIN_BARCODE_FORMATS.filter((format) => supportedFormats.includes(format));
+  }
+  if (!formats.length) {
+    throw new Error("This browser camera scanner does not support common VIN barcode formats.");
+  }
+
+  vinScannerDetector = new BarcodeDetector({ formats });
+  return vinScannerDetector;
+}
+
+async function startVinScanner() {
+  if (!window.isSecureContext) {
+    setVehicleLookupStatus("Camera scanning requires HTTPS.", true);
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setVehicleLookupStatus("Camera access is not available in this browser.", true);
+    return;
+  }
+
+  try {
+    const detector = await getVinBarcodeDetector();
+    const panel = document.querySelector("#vinScannerPanel");
+    const video = document.querySelector("#vinScannerVideo");
+    panel.hidden = false;
+    setVinScannerStatus("Starting camera...");
+    vinScannerStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+    video.srcObject = vinScannerStream;
+    await video.play();
+    setVinScannerStatus("Point the camera at the VIN barcode.");
+    scanVinFrame(detector, video);
+  } catch (error) {
+    stopVinScanner();
+    setVehicleLookupStatus(error.message || "Unable to start VIN scanner.", true);
+  }
+}
+
+function stopVinScanner() {
+  if (vinScannerFrame) {
+    cancelAnimationFrame(vinScannerFrame);
+    vinScannerFrame = null;
+  }
+  if (vinScannerStream) {
+    vinScannerStream.getTracks().forEach((track) => track.stop());
+    vinScannerStream = null;
+  }
+  vinScannerBusy = false;
+  const video = document.querySelector("#vinScannerVideo");
+  if (video) video.srcObject = null;
+  const panel = document.querySelector("#vinScannerPanel");
+  if (panel) panel.hidden = true;
+  setVinScannerStatus("");
+}
+
+async function scanVinFrame(detector, video) {
+  if (!vinScannerStream) return;
+  if (!vinScannerBusy && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    vinScannerBusy = true;
+    try {
+      const barcodes = await detector.detect(video);
+      const vin = barcodes.map((barcode) => extractVinFromScan(barcode.rawValue)).find(Boolean);
+      if (vin) {
+        await acceptScannedVin(vin);
+        return;
+      }
+    } catch {
+      setVinScannerStatus("Still looking for a VIN barcode...");
+    } finally {
+      vinScannerBusy = false;
+    }
+  }
+  vinScannerFrame = requestAnimationFrame(() => scanVinFrame(detector, video));
+}
+
+async function acceptScannedVin(vin) {
+  stopVinScanner();
+  document.querySelector("#vehicleVin").value = vin;
+  setVehicleLookupStatus("VIN scanned. Decoding...");
+  await decodeVehicleVin();
 }
 
 function vehicleFromForm() {
@@ -1075,6 +1192,8 @@ document.querySelector("#clearCustomerForm").addEventListener("click", clearCust
 document.querySelector("#customerSearch").addEventListener("input", renderCustomers);
 document.querySelector("#vehicleForm").addEventListener("submit", saveVehicleFromForm);
 document.querySelector("#decodeVin").addEventListener("click", decodeVehicleVin);
+document.querySelector("#scanVin").addEventListener("click", startVinScanner);
+document.querySelector("#stopVinScanner").addEventListener("click", stopVinScanner);
 document.querySelector("#cancelVehicle").addEventListener("click", closeVehicleDialog);
 document.querySelector("#closeVehicleDialog").addEventListener("click", closeVehicleDialog);
 document.querySelector("#vehicleModel").addEventListener("change", toggleManualVehicleModel);

@@ -254,7 +254,7 @@ textarea {
 .field-with-button {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .grid-2,
@@ -479,6 +479,48 @@ textarea {
 
 .error-text {
   color: #9d2f24;
+}
+
+.scanner-panel {
+  background: #f7fafb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin: -2px 0 14px;
+  padding: 12px;
+}
+
+.scanner-panel[hidden] {
+  display: none;
+}
+
+.scanner-video-wrap {
+  background: #0f171d;
+  border-radius: 8px;
+  min-height: 220px;
+  overflow: hidden;
+  position: relative;
+}
+
+.scanner-video-wrap video {
+  display: block;
+  height: 100%;
+  min-height: 220px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.scanner-guide {
+  border: 2px solid rgba(217, 239, 231, 0.92);
+  border-radius: 6px;
+  box-shadow: 0 0 0 999px rgba(15, 23, 29, 0.22);
+  height: 72px;
+  left: 8%;
+  position: absolute;
+  right: 8%;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .line-editor {

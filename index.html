@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-6">
+    <link rel="stylesheet" href="styles.css?v=20260526-7">
   </head>
   <body>
     <div class="app-shell">
@@ -217,8 +217,19 @@
           <div class="field-with-button">
             <input id="vehicleVin" autocomplete="off">
             <button type="button" class="secondary small" id="decodeVin">Decode VIN</button>
+            <button type="button" class="secondary small" id="scanVin">Scan VIN</button>
           </div>
         </label>
+        <div id="vinScannerPanel" class="scanner-panel" hidden>
+          <div class="scanner-video-wrap">
+            <video id="vinScannerVideo" playsinline muted></video>
+            <span class="scanner-guide" aria-hidden="true"></span>
+          </div>
+          <p id="vinScannerStatus" class="form-status muted" aria-live="polite"></p>
+          <div class="item-actions">
+            <button type="button" class="secondary small" id="stopVinScanner">Stop Scanner</button>
+          </div>
+        </div>
         <div class="grid-2">
           <label>Plate<input id="vehiclePlate" autocomplete="off" placeholder="ABC123"></label>
           <label>Plate State<input id="vehiclePlateState" autocomplete="off" placeholder="MN" maxlength="2"></label>
@@ -241,6 +252,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-6"></script>
+    <script src="app.js?v=20260526-7"></script>
   </body>
 </html>
