@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-7">
+    <link rel="stylesheet" href="styles.css?v=20260526-8">
   </head>
   <body>
     <div class="app-shell">
@@ -21,7 +21,7 @@
           <button class="nav-button" data-view="customers">Customers</button>
           <button class="nav-button" data-view="orders">Estimates & ROs</button>
           <button class="nav-button" data-view="parts">Parts</button>
-          <button class="nav-button" data-view="settings">Backup</button>
+          <button class="nav-button" data-view="settings">Settings</button>
         </nav>
       </aside>
 
@@ -32,6 +32,8 @@
             <p id="viewSubtitle">Today at a glance.</p>
           </div>
           <div class="topbar-actions">
+            <span id="signedInUser" class="muted"></span>
+            <button class="secondary" id="logoutButton">Logout</button>
             <button class="secondary" id="newCustomerQuick">New Customer</button>
             <button class="primary" id="newOrderQuick">New Estimate</button>
           </div>
@@ -182,6 +184,28 @@
         </section>
 
         <section id="settingsView" class="view">
+          <form id="authSettingsForm" class="panel narrow">
+            <h2>Authentication</h2>
+            <label class="check-row"><input id="authLocalEnabled" type="checkbox"> Enable username/password login</label>
+            <div class="grid-2">
+              <label>Local Username<input id="authLocalUsername" autocomplete="username"></label>
+              <label>Set Local Password<input id="authLocalPassword" type="password" autocomplete="new-password" placeholder="Leave blank to keep current"></label>
+            </div>
+            <label class="check-row"><input id="authOidcEnabled" type="checkbox"> Enable Keycloak / OIDC login</label>
+            <label>Issuer URL<input id="authIssuerUrl" placeholder="https://keycloak.example.com/realms/shop"></label>
+            <div class="grid-2">
+              <label>Client ID<input id="authClientId"></label>
+              <label>Client Secret<input id="authClientSecret" type="password" autocomplete="new-password" placeholder="Leave blank to keep current"></label>
+            </div>
+            <label>Public App URL<input id="authPublicUrl" placeholder="https://shop.example.com"></label>
+            <label>Allowed Emails / Domains<input id="authEmailDomains" placeholder="* or example.com,owner@example.com"></label>
+            <p class="muted">Keycloak redirect URI: <strong id="authRedirectUri">/oauth2/callback</strong></p>
+            <p id="authSettingsStatus" class="form-status muted" aria-live="polite"></p>
+            <div class="form-actions">
+              <button class="primary" type="submit">Save Authentication</button>
+            </div>
+          </form>
+
           <div class="panel narrow">
             <h2>Backup</h2>
             <p class="muted">Export a JSON backup regularly. Import replaces the local browser copy.</p>
@@ -252,6 +276,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-7"></script>
+    <script src="app.js?v=20260526-8"></script>
   </body>
 </html>

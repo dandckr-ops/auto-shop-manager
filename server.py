@@ -1,14 +1,19 @@
+import base64
+import hashlib
 import json
 import math
 import os
+import secrets
 import smtplib
 import urllib.error
 import urllib.request
 import uuid
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse, parse_qs
+from urllib.parse import quote, urlencode, unquote, urlparse, parse_qs
 
 import psycopg
 
@@ -16,6 +21,10 @@ import psycopg
 APP_DIR = Path(__file__).resolve().parent
 APP_DATA_DIR = Path(os.environ.get("APP_DATA_DIR", "/data"))
 NHTSA_API_BASE = "https://vpic.nhtsa.dot.gov/api/vehicles"
+AUTH_SETTINGS_KEY = "auth"
+SESSION_COOKIE = "asm_session"
+SESSION_SECONDS = 60 * 60 * 12
+LOGIN_STATE_SECONDS = 60 * 10
 TAX_RATE = 0.08125
 ORDER_STATUSES = [
     "estimate created",
@@ -137,6 +146,51 @@ def init_db() -> None:
         conn.execute("create index if not exists idx_order_lines_order on order_lines(order_id)")
         conn.execute("create index if not exists idx_parts_orders_status on parts_orders(status)")
         conn.execute("create table if not exists app_state_archive (id text primary key, data jsonb not null, updated_at timestamptz not null default now())")
+        conn.execute(
+            """
+            create table if not exists app_settings (
+                key text primary key,
+                value jsonb not null,
+                updated_at timestamptz not null default now()
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table if not exists auth_sessions (
+                id text primary key,
+                provider text not null,
+                username text not null default '',
+                email text not null default '',
+                display_name text not null default '',
+                expires_at timestamptz not null,
+                created_at timestamptz not null default now()
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table if not exists auth_login_states (
+                state text primary key,
+                nonce text not null,
+                code_verifier text not null,
+                next_path text not null default '/',
+                expires_at timestamptz not null,
+                created_at timestamptz not null default now()
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table if not exists auth_users (
+                username text primary key,
+                password_hash text not null,
+                display_name text not null default '',
+                active boolean not null default true,
+                updated_at timestamptz not null default now()
+            )
+            """
+        )
         conn.execute("alter table vehicles add column if not exists trim text not null default ''")
         conn.execute("alter table vehicles add column if not exists body text not null default ''")
         conn.execute("alter table vehicles add column if not exists source text not null default ''")
@@ -145,6 +199,8 @@ def init_db() -> None:
         conn.execute("alter table repair_orders alter column status set default 'estimate created'")
         migrate_order_statuses(conn)
         seed_parts_providers(conn)
+        seed_auth_settings(conn)
+        seed_local_user(conn)
     migrate_blob_state()
 
 
@@ -192,6 +248,54 @@ def seed_parts_providers(conn) -> None:
         )
 
 
+def default_auth_settings() -> dict:
+    issuer_url = os.environ.get("OIDC_ISSUER_URL", "").strip()
+    client_id = os.environ.get("OIDC_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("OIDC_CLIENT_SECRET", "").strip()
+    return {
+        "localEnabled": os.environ.get("LOCAL_AUTH_ENABLED", "true").lower() == "true",
+        "oidcEnabled": bool(issuer_url and client_id and client_secret),
+        "issuerUrl": issuer_url,
+        "clientId": client_id,
+        "clientSecret": client_secret,
+        "publicUrl": os.environ.get("SHOP_PUBLIC_URL", "").strip(),
+        "emailDomains": os.environ.get("OAUTH2_PROXY_EMAIL_DOMAINS", "*").strip() or "*",
+    }
+
+
+def seed_auth_settings(conn) -> None:
+    exists = conn.execute(
+        "select exists (select 1 from app_settings where key = %s)",
+        (AUTH_SETTINGS_KEY,),
+    ).fetchone()[0]
+    if exists:
+        return
+    conn.execute(
+        """
+        insert into app_settings (key, value)
+        values (%s, %s::jsonb)
+        """,
+        (AUTH_SETTINGS_KEY, json.dumps(default_auth_settings())),
+    )
+
+
+def seed_local_user(conn) -> None:
+    password = os.environ.get("LOCAL_AUTH_PASSWORD", "")
+    if not password:
+        return
+    username = os.environ.get("LOCAL_AUTH_USERNAME", "admin").strip() or "admin"
+    exists = conn.execute("select exists (select 1 from auth_users where username = %s)", (username,)).fetchone()[0]
+    if exists:
+        return
+    conn.execute(
+        """
+        insert into auth_users (username, password_hash, display_name, active)
+        values (%s, %s, %s, true)
+        """,
+        (username, hash_password(password), username),
+    )
+
+
 def migrate_blob_state() -> None:
     with connect() as conn:
         has_customers = conn.execute("select exists (select 1 from customers)").fetchone()[0]
@@ -215,6 +319,310 @@ def migrate_blob_state() -> None:
 
 def empty_state() -> dict:
     return {"customers": [], "orders": [], "partsOrders": []}
+
+
+def decode_json_value(value):
+    if isinstance(value, str):
+        return json.loads(value)
+    return value or {}
+
+
+def get_auth_settings(include_secret: bool = True) -> dict:
+    with connect() as conn:
+        row = conn.execute(
+            "select value from app_settings where key = %s",
+            (AUTH_SETTINGS_KEY,),
+        ).fetchone()
+        if not row:
+            settings = default_auth_settings()
+            conn.execute(
+                """
+                insert into app_settings (key, value)
+                values (%s, %s::jsonb)
+                """,
+                (AUTH_SETTINGS_KEY, json.dumps(settings)),
+            )
+        else:
+            settings = {**default_auth_settings(), **decode_json_value(row[0])}
+        if not include_secret:
+            client_secret_configured = bool(settings.get("clientSecret"))
+            settings = {key: value for key, value in settings.items() if key != "clientSecret"}
+            settings["clientSecretConfigured"] = client_secret_configured
+        local_user = conn.execute("select username from auth_users where active = true order by username limit 1").fetchone()
+    settings["localUsername"] = local_user[0] if local_user else os.environ.get("LOCAL_AUTH_USERNAME", "admin")
+    settings["localUserConfigured"] = bool(local_user)
+    return settings
+
+
+def update_auth_settings(data: dict) -> dict:
+    current = get_auth_settings(include_secret=True)
+    next_settings = {
+        "localEnabled": bool(data.get("localEnabled")),
+        "oidcEnabled": bool(data.get("oidcEnabled")),
+        "issuerUrl": str(data.get("issuerUrl") or "").strip().rstrip("/"),
+        "clientId": str(data.get("clientId") or "").strip(),
+        "clientSecret": str(data.get("clientSecret") or "").strip() or current.get("clientSecret", ""),
+        "publicUrl": str(data.get("publicUrl") or "").strip().rstrip("/"),
+        "emailDomains": str(data.get("emailDomains") or "*").strip() or "*",
+    }
+    username = str(data.get("localUsername") or current.get("localUsername") or "admin").strip() or "admin"
+    password = str(data.get("localPassword") or "")
+
+    with connect() as conn:
+        conn.execute(
+            """
+            insert into app_settings (key, value, updated_at)
+            values (%s, %s::jsonb, now())
+            on conflict (key) do update
+            set value = excluded.value,
+                updated_at = now()
+            """,
+            (AUTH_SETTINGS_KEY, json.dumps(next_settings)),
+        )
+        if password:
+            conn.execute(
+                """
+                insert into auth_users (username, password_hash, display_name, active, updated_at)
+                values (%s, %s, %s, true, now())
+                on conflict (username) do update
+                set password_hash = excluded.password_hash,
+                    display_name = excluded.display_name,
+                    active = true,
+                    updated_at = now()
+                """,
+                (username, hash_password(password), username),
+            )
+        elif data.get("localUsername") and current.get("localUserConfigured"):
+            conn.execute(
+                """
+                update auth_users
+                set username = %s,
+                    display_name = %s,
+                    updated_at = now()
+                where username = %s
+                """,
+                (username, username, current.get("localUsername")),
+            )
+    return get_auth_settings(include_secret=False)
+
+
+def hash_password(password: str) -> str:
+    iterations = 260000
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "pbkdf2_sha256${}${}${}".format(
+        iterations,
+        base64.urlsafe_b64encode(salt).decode("ascii"),
+        base64.urlsafe_b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        scheme, iterations, salt_text, digest_text = stored_hash.split("$", 3)
+        if scheme != "pbkdf2_sha256":
+            return False
+        salt = base64.urlsafe_b64decode(salt_text.encode("ascii"))
+        expected = base64.urlsafe_b64decode(digest_text.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+        return secrets.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def auth_is_enabled() -> bool:
+    settings = get_auth_settings()
+    return bool(settings.get("localEnabled") or settings.get("oidcEnabled"))
+
+
+def safe_next_path(value: str | None) -> str:
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    return value
+
+
+def public_url_from_headers(headers) -> str:
+    settings = get_auth_settings()
+    if settings.get("publicUrl"):
+        return settings["publicUrl"].rstrip("/")
+    proto = headers.get("X-Forwarded-Proto") or "http"
+    host = headers.get("Host") or "127.0.0.1"
+    return f"{proto}://{host}"
+
+
+def oidc_redirect_uri(headers) -> str:
+    return f"{public_url_from_headers(headers)}/oauth2/callback"
+
+
+def fetch_json_url(url: str, headers: dict | None = None, data: bytes | None = None) -> dict:
+    request_headers = {"User-Agent": "AutoShopManager/1.0"}
+    request_headers.update(headers or {})
+    request = urllib.request.Request(url, data=data, headers=request_headers)
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(detail or exc.reason) from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(str(exc.reason)) from exc
+    except (TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Provider returned an invalid response") from exc
+
+
+def oidc_discovery(settings: dict) -> dict:
+    issuer = str(settings.get("issuerUrl") or "").strip().rstrip("/")
+    if not issuer:
+        raise RuntimeError("OIDC issuer URL is not configured")
+    return fetch_json_url(f"{issuer}/.well-known/openid-configuration")
+
+
+def oidc_allowed_email(email: str, settings: dict) -> bool:
+    rules = [rule.strip().lower() for rule in str(settings.get("emailDomains") or "*").split(",") if rule.strip()]
+    if "*" in rules:
+        return True
+    email = email.lower()
+    domain = email.split("@")[-1] if "@" in email else ""
+    return email in rules or domain in rules
+
+
+def create_auth_session(provider: str, username: str, email: str = "", display_name: str = "") -> str:
+    session_id = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=SESSION_SECONDS)
+    with connect() as conn:
+        conn.execute(
+            """
+            insert into auth_sessions (id, provider, username, email, display_name, expires_at)
+            values (%s, %s, %s, %s, %s, %s)
+            """,
+            (session_id, provider, username, email, display_name, expires_at),
+        )
+    return session_id
+
+
+def find_auth_session(session_id: str | None) -> dict | None:
+    if not session_id:
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            """
+            select id, provider, username, email, display_name, expires_at
+            from auth_sessions
+            where id = %s
+            """,
+            (session_id,),
+        ).fetchone()
+        if not row:
+            return None
+        if row[5] <= datetime.now(timezone.utc):
+            conn.execute("delete from auth_sessions where id = %s", (session_id,))
+            return None
+    return {
+        "id": row[0],
+        "provider": row[1],
+        "username": row[2],
+        "email": row[3],
+        "displayName": row[4],
+    }
+
+
+def delete_auth_session(session_id: str | None) -> None:
+    if not session_id:
+        return
+    with connect() as conn:
+        conn.execute("delete from auth_sessions where id = %s", (session_id,))
+
+
+def local_login(data: dict) -> tuple[str, dict]:
+    settings = get_auth_settings()
+    if not settings.get("localEnabled"):
+        raise ValueError("Local login is not enabled")
+    username = str(data.get("username") or "").strip()
+    password = str(data.get("password") or "")
+    if not username or not password:
+        raise ValueError("Username and password are required")
+    with connect() as conn:
+        row = conn.execute(
+            """
+            select username, password_hash, display_name
+            from auth_users
+            where username = %s and active = true
+            """,
+            (username,),
+        ).fetchone()
+    if not row:
+        raise ValueError("Local login is not configured yet")
+    if not verify_password(password, row[1]):
+        raise ValueError("Invalid username or password")
+    session_id = create_auth_session("local", row[0], "", row[2] or row[0])
+    return session_id, {"provider": "local", "username": row[0], "displayName": row[2] or row[0]}
+
+
+def save_oidc_login_state(state: str, nonce: str, code_verifier: str, next_path: str) -> None:
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=LOGIN_STATE_SECONDS)
+    with connect() as conn:
+        conn.execute("delete from auth_login_states where expires_at <= now()")
+        conn.execute(
+            """
+            insert into auth_login_states (state, nonce, code_verifier, next_path, expires_at)
+            values (%s, %s, %s, %s, %s)
+            """,
+            (state, nonce, code_verifier, safe_next_path(next_path), expires_at),
+        )
+
+
+def pop_oidc_login_state(state: str) -> dict:
+    with connect() as conn:
+        row = conn.execute(
+            """
+            select state, nonce, code_verifier, next_path, expires_at
+            from auth_login_states
+            where state = %s
+            """,
+            (state,),
+        ).fetchone()
+        conn.execute("delete from auth_login_states where state = %s or expires_at <= now()", (state,))
+    if not row or row[4] <= datetime.now(timezone.utc):
+        raise RuntimeError("Login session expired. Please try again.")
+    return {"state": row[0], "nonce": row[1], "codeVerifier": row[2], "nextPath": row[3]}
+
+
+def code_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def exchange_oidc_code(code: str, login_state: dict, headers) -> tuple[str, dict]:
+    settings = get_auth_settings()
+    if not settings.get("oidcEnabled"):
+        raise RuntimeError("Keycloak login is not enabled")
+    discovery = oidc_discovery(settings)
+    form = urlencode(
+        {
+            "grant_type": "authorization_code",
+            "client_id": settings.get("clientId", ""),
+            "client_secret": settings.get("clientSecret", ""),
+            "code": code,
+            "redirect_uri": oidc_redirect_uri(headers),
+            "code_verifier": login_state["codeVerifier"],
+        }
+    ).encode("utf-8")
+    token_data = fetch_json_url(
+        discovery["token_endpoint"],
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        data=form,
+    )
+    userinfo = fetch_json_url(
+        discovery["userinfo_endpoint"],
+        headers={"Authorization": f"Bearer {token_data.get('access_token', '')}"},
+    )
+    email = userinfo.get("email") or userinfo.get("preferred_username") or userinfo.get("sub") or ""
+    if not oidc_allowed_email(email, settings):
+        raise RuntimeError("This account is not allowed to access the shop app")
+    display_name = userinfo.get("name") or userinfo.get("preferred_username") or email
+    username = userinfo.get("preferred_username") or email
+    session_id = create_auth_session("keycloak", username, email, display_name)
+    return session_id, {"provider": "keycloak", "username": username, "email": email, "displayName": display_name}
 
 
 def get_state() -> dict:
@@ -723,6 +1131,66 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(APP_DIR), **kwargs)
 
+    def current_session_id(self) -> str:
+        cookie = SimpleCookie(self.headers.get("Cookie", ""))
+        morsel = cookie.get(SESSION_COOKIE)
+        return morsel.value if morsel else ""
+
+    def current_user(self) -> dict | None:
+        if not auth_is_enabled():
+            return {"provider": "disabled", "username": "local", "displayName": "Local Access"}
+        return find_auth_session(self.current_session_id())
+
+    def wants_json(self) -> bool:
+        return self.path.startswith("/api/")
+
+    def session_cookie(self, session_id: str) -> str:
+        parts = [
+            f"{SESSION_COOKIE}={session_id}",
+            "Path=/",
+            "HttpOnly",
+            "SameSite=Lax",
+            f"Max-Age={SESSION_SECONDS}",
+        ]
+        if public_url_from_headers(self.headers).startswith("https://"):
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def expired_session_cookie(self) -> str:
+        return f"{SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+
+    def send_redirect(self, location: str, cookie_header: str | None = None) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        if cookie_header:
+            self.send_header("Set-Cookie", cookie_header)
+        self.end_headers()
+
+    def is_public_get(self, path: str) -> bool:
+        return path in {
+            "/login",
+            "/login.html",
+            "/login.js",
+            "/styles.css",
+            "/api/health",
+            "/api/auth/public",
+            "/auth/keycloak",
+            "/oauth2/callback",
+            "/favicon.ico",
+        }
+
+    def ensure_authenticated(self, path: str) -> bool:
+        if not auth_is_enabled():
+            return True
+        if self.current_user():
+            return True
+        if self.wants_json():
+            self.send_json({"ok": False, "error": "Authentication required"}, status=401)
+        else:
+            next_path = safe_next_path(self.path)
+            self.send_redirect(f"/login?next={quote(next_path)}")
+        return False
+
     def end_headers(self):
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -734,8 +1202,84 @@ class Handler(SimpleHTTPRequestHandler):
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         query = parse_qs(parsed_url.query)
+
+        if path == "/logout":
+            delete_auth_session(self.current_session_id())
+            self.send_redirect("/login", self.expired_session_cookie())
+            return
+
+        if path == "/login" or path == "/login.html":
+            if auth_is_enabled() and self.current_user():
+                self.send_redirect(safe_next_path(get_query_value(query, "next")))
+                return
+            self.path = "/login.html"
+            super().do_GET()
+            return
+
+        if path == "/api/auth/public":
+            settings = get_auth_settings(include_secret=False)
+            self.send_json(
+                {
+                    "localEnabled": bool(settings.get("localEnabled")),
+                    "localUserConfigured": bool(settings.get("localUserConfigured")),
+                    "oidcEnabled": bool(settings.get("oidcEnabled")),
+                    "authEnabled": auth_is_enabled(),
+                }
+            )
+            return
+
+        if path == "/api/auth/me":
+            user = self.current_user()
+            if not user:
+                self.send_json({"ok": False, "error": "Authentication required"}, status=401)
+                return
+            self.send_json({"ok": True, "user": {key: value for key, value in user.items() if key != "id"}})
+            return
+
+        if path == "/auth/keycloak":
+            try:
+                settings = get_auth_settings()
+                discovery = oidc_discovery(settings)
+                state = secrets.token_urlsafe(32)
+                nonce = secrets.token_urlsafe(32)
+                verifier = secrets.token_urlsafe(64)
+                save_oidc_login_state(state, nonce, verifier, get_query_value(query, "next") or "/")
+                params = urlencode(
+                    {
+                        "response_type": "code",
+                        "client_id": settings.get("clientId", ""),
+                        "redirect_uri": oidc_redirect_uri(self.headers),
+                        "scope": "openid email profile",
+                        "state": state,
+                        "nonce": nonce,
+                        "code_challenge": code_challenge(verifier),
+                        "code_challenge_method": "S256",
+                    }
+                )
+                self.send_redirect(f"{discovery['authorization_endpoint']}?{params}")
+            except RuntimeError as exc:
+                self.send_redirect(f"/login?error={quote(str(exc))}")
+            return
+
+        if path == "/oauth2/callback":
+            try:
+                if get_query_value(query, "error"):
+                    raise RuntimeError(get_query_value(query, "error_description") or get_query_value(query, "error"))
+                login_state = pop_oidc_login_state(get_query_value(query, "state"))
+                session_id, _user = exchange_oidc_code(get_query_value(query, "code"), login_state, self.headers)
+                self.send_redirect(login_state["nextPath"], self.session_cookie(session_id))
+            except RuntimeError as exc:
+                self.send_redirect(f"/login?error={quote(str(exc))}")
+            return
+
+        if not self.is_public_get(path) and not self.ensure_authenticated(path):
+            return
+
         if path == "/api/health":
             self.send_json({"ok": True, "emailConfigured": bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))})
+            return
+        if path == "/api/auth/settings":
+            self.send_json({"ok": True, "settings": get_auth_settings(include_secret=False)})
             return
         if path == "/api/state":
             self.send_json(get_state())
@@ -759,6 +1303,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_PUT(self):
         path = urlparse(self.path).path
+        if not self.ensure_authenticated(path):
+            return
+        if path == "/api/auth/settings":
+            data = self.read_json()
+            self.send_json({"ok": True, "settings": update_auth_settings(data)})
+            return
         if path != "/api/state":
             self.send_error(404)
             return
@@ -773,6 +1323,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path
+        if not self.ensure_authenticated(path):
+            return
         prefix = "/api/orders/"
         if not path.startswith(prefix):
             self.send_error(404)
@@ -791,6 +1343,20 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/auth/login":
+            data = self.read_json()
+            try:
+                session_id, user = local_login(data)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=401)
+                return
+            self.send_json(
+                {"ok": True, "user": user, "next": safe_next_path(data.get("next"))},
+                headers={"Set-Cookie": self.session_cookie(session_id)},
+            )
+            return
+        if not self.ensure_authenticated(path):
+            return
         if path != "/api/email/estimate":
             if path == "/api/parts/search":
                 data = self.read_json()
@@ -819,11 +1385,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "Invalid JSON")
             return {}
 
-    def send_json(self, data: dict, status: int = 200) -> None:
+    def send_json(self, data: dict, status: int = 200, headers: dict | None = None) -> None:
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 

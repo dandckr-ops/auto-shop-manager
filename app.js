@@ -4,6 +4,8 @@ const API_PARTS_SEARCH_URL = "/api/parts/search";
 const API_PARTS_PROVIDERS_URL = "/api/parts/providers";
 const API_VEHICLE_DECODE_URL = "/api/vehicles/decode-vin";
 const API_VEHICLE_MODELS_URL = "/api/vehicles/models";
+const API_AUTH_ME_URL = "/api/auth/me";
+const API_AUTH_SETTINGS_URL = "/api/auth/settings";
 const ROCKAUTO_CATALOG_BASE_URL = "https://www.rockauto.com/en/catalog";
 const MANUAL_MODEL_VALUE = "__manual_model__";
 const VIN_BARCODE_FORMATS = ["code_39", "code_128", "data_matrix", "qr_code", "pdf417"];
@@ -66,6 +68,7 @@ let state = structuredClone(starterData);
 let currentView = "dashboard";
 let apiAvailable = false;
 let partsProviders = [];
+let authSettings = null;
 let vinScannerStream = null;
 let vinScannerFrame = null;
 let vinScannerDetector = null;
@@ -93,8 +96,8 @@ const views = {
     el: document.querySelector("#partsView")
   },
   settings: {
-    title: "Backup",
-    subtitle: "Export and restore your local data.",
+    title: "Settings",
+    subtitle: "Authentication, backups, and app configuration.",
     el: document.querySelector("#settingsView")
   }
 };
@@ -268,10 +271,27 @@ function render() {
   renderPartsTargetOptions();
   renderRockAutoLookup();
   renderPartsProviders();
+  renderAuthSettings();
   renderCustomers();
   renderOrders();
   renderPartsOrders();
   updateTotals();
+}
+
+function renderAuthSettings() {
+  if (!authSettings) return;
+  document.querySelector("#authLocalEnabled").checked = Boolean(authSettings.localEnabled);
+  document.querySelector("#authLocalUsername").value = authSettings.localUsername || "admin";
+  document.querySelector("#authOidcEnabled").checked = Boolean(authSettings.oidcEnabled);
+  document.querySelector("#authIssuerUrl").value = authSettings.issuerUrl || "";
+  document.querySelector("#authClientId").value = authSettings.clientId || "";
+  document.querySelector("#authClientSecret").placeholder = authSettings.clientSecretConfigured
+    ? "Configured - leave blank to keep current"
+    : "Required for Keycloak login";
+  document.querySelector("#authPublicUrl").value = authSettings.publicUrl || window.location.origin;
+  document.querySelector("#authEmailDomains").value = authSettings.emailDomains || "*";
+  const publicUrl = document.querySelector("#authPublicUrl").value.replace(/\/$/, "");
+  document.querySelector("#authRedirectUri").textContent = `${publicUrl || window.location.origin}/oauth2/callback`;
 }
 
 function renderDashboard() {
@@ -526,6 +546,12 @@ function fillCustomerForm(customer) {
 
 function setVehicleLookupStatus(message, isError = false) {
   const status = document.querySelector("#vehicleLookupStatus");
+  status.textContent = message || "";
+  status.classList.toggle("error-text", isError);
+}
+
+function setFormStatus(selector, message, isError = false) {
+  const status = document.querySelector(selector);
   status.textContent = message || "";
   status.classList.toggle("error-text", isError);
 }
@@ -790,6 +816,60 @@ async function loadVehicleModelSuggestions(selectedModel = "") {
     setVehicleModelOptions(payload.models || [], selectedModel || selectedVehicleModel());
   } catch {
     // Model suggestions are helpful, but manual entry should never be blocked.
+  }
+}
+
+async function loadCurrentUser() {
+  try {
+    const response = await fetch(API_AUTH_ME_URL, { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const user = payload.user || {};
+    document.querySelector("#signedInUser").textContent = user.displayName || user.email || user.username || "";
+  } catch {
+    document.querySelector("#signedInUser").textContent = "";
+  }
+}
+
+async function loadAuthSettings() {
+  try {
+    const response = await fetch(API_AUTH_SETTINGS_URL, { cache: "no-store" });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return payload.settings || null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveAuthSettings(event) {
+  event.preventDefault();
+  setFormStatus("#authSettingsStatus", "Saving authentication settings...");
+  try {
+    const response = await fetch(API_AUTH_SETTINGS_URL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        localEnabled: document.querySelector("#authLocalEnabled").checked,
+        localUsername: document.querySelector("#authLocalUsername").value.trim(),
+        localPassword: document.querySelector("#authLocalPassword").value,
+        oidcEnabled: document.querySelector("#authOidcEnabled").checked,
+        issuerUrl: document.querySelector("#authIssuerUrl").value.trim(),
+        clientId: document.querySelector("#authClientId").value.trim(),
+        clientSecret: document.querySelector("#authClientSecret").value,
+        publicUrl: document.querySelector("#authPublicUrl").value.trim(),
+        emailDomains: document.querySelector("#authEmailDomains").value.trim()
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Settings save failed");
+    authSettings = payload.settings;
+    document.querySelector("#authLocalPassword").value = "";
+    document.querySelector("#authClientSecret").value = "";
+    renderAuthSettings();
+    setFormStatus("#authSettingsStatus", "Authentication settings saved.");
+  } catch (error) {
+    setFormStatus("#authSettingsStatus", error.message, true);
   }
 }
 
@@ -1174,6 +1254,10 @@ document.querySelector("#newOrderQuick").addEventListener("click", () => {
   setView("orders");
 });
 
+document.querySelector("#logoutButton").addEventListener("click", () => {
+  window.location.href = "/logout";
+});
+
 document.querySelector("#customerForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const incoming = customerFromForm();
@@ -1190,6 +1274,8 @@ document.querySelector("#customerForm").addEventListener("submit", (event) => {
 
 document.querySelector("#clearCustomerForm").addEventListener("click", clearCustomerForm);
 document.querySelector("#customerSearch").addEventListener("input", renderCustomers);
+document.querySelector("#authSettingsForm").addEventListener("submit", saveAuthSettings);
+document.querySelector("#authPublicUrl").addEventListener("input", renderAuthSettings);
 document.querySelector("#vehicleForm").addEventListener("submit", saveVehicleFromForm);
 document.querySelector("#decodeVin").addEventListener("click", decodeVehicleVin);
 document.querySelector("#scanVin").addEventListener("click", startVinScanner);
@@ -1263,6 +1349,8 @@ document.body.addEventListener("click", handleListClick);
 async function boot() {
   state = await loadState();
   partsProviders = await loadPartsProviders();
+  authSettings = await loadAuthSettings();
+  await loadCurrentUser();
   clearOrderForm();
   render();
   openOrderFromHash();

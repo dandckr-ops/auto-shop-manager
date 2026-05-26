@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login - Auto Shop Manager</title>
+    <link rel="stylesheet" href="styles.css?v=20260526-8">
+  </head>
+  <body class="auth-page">
+    <main class="auth-card">
+      <div class="brand auth-brand">
+        <span class="brand-mark">ASM</span>
+        <div>
+          <strong>Shop Manager</strong>
+          <small>Sign in</small>
+        </div>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <h1>Welcome Back</h1>
+        <label>Username<input id="loginUsername" autocomplete="username"></label>
+        <label>Password<input id="loginPassword" type="password" autocomplete="current-password"></label>
+        <button class="primary" type="submit">Login</button>
+      </form>
+
+      <a id="keycloakLogin" class="secondary external-button auth-sso" href="/auth/keycloak">Login with Keycloak</a>
+      <p id="loginStatus" class="form-status muted" aria-live="polite"></p>
+    </main>
+    <script src="login.js?v=20260526-8"></script>
+  </body>
+</html>

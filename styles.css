@@ -153,6 +153,17 @@ h3 {
   gap: 10px;
 }
 
+.check-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.check-row input {
+  min-height: auto;
+  width: auto;
+}
+
 .primary {
   background: var(--primary);
   color: #ffffff;
@@ -479,6 +490,44 @@ textarea {
 
 .error-text {
   color: #9d2f24;
+}
+
+.auth-page {
+  align-items: center;
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.auth-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 16px;
+  max-width: 420px;
+  padding: 22px;
+  width: 100%;
+}
+
+.auth-brand {
+  margin-bottom: 4px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 4px;
+}
+
+.auth-form h1 {
+  font-size: 24px;
+}
+
+.auth-sso {
+  justify-content: center;
 }
 
 .scanner-panel {

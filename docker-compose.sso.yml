@@ -1,40 +1,22 @@
 services:
   app:
-    ports: !reset []
-    expose:
-      - "8787"
-
-  oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.12.0
-    container_name: auto-shop-oauth2-proxy
-    depends_on:
-      - app
-    command:
-      - --http-address=0.0.0.0:4180
-      - --provider=keycloak-oidc
-      - --oidc-issuer-url=${OIDC_ISSUER_URL}
-      - --client-id=${OIDC_CLIENT_ID}
-      - --client-secret=${OIDC_CLIENT_SECRET}
-      - --redirect-url=${SHOP_PUBLIC_URL}/oauth2/callback
-      - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET}
-      - --cookie-secure=true
-      - --email-domain=${OAUTH2_PROXY_EMAIL_DOMAINS}
-      - --upstream=http://app:8787
-      - --reverse-proxy=true
-      - --set-xauthrequest=true
-      - --pass-access-token=true
-      - --pass-user-headers=true
-      - --skip-provider-button=true
-      - --code-challenge-method=S256
+    environment:
+      SHOP_PUBLIC_URL: ${SHOP_PUBLIC_URL:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
+      LOCAL_AUTH_ENABLED: ${LOCAL_AUTH_ENABLED:-true}
+      LOCAL_AUTH_USERNAME: ${LOCAL_AUTH_USERNAME:-admin}
+      LOCAL_AUTH_PASSWORD: ${LOCAL_AUTH_PASSWORD:-}
     ports:
-      - "8787:4180"
-    restart: unless-stopped
+      - "8787:8787"
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: auto-shop-cloudflared
     depends_on:
-      - oauth2-proxy
+      - app
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN}
     restart: unless-stopped
     profiles:
