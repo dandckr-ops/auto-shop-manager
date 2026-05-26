@@ -182,12 +182,60 @@ function vehicleLabel(vehicle) {
   return [vehicle.year, vehicle.make, vehicle.model, vehicle.engine].filter(Boolean).join(" ");
 }
 
+function normalizeRockAutoMake(make) {
+  const value = String(make || "").trim();
+  const key = value.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ");
+  const aliases = {
+    chevy: "Chevrolet",
+    mercedes: "Mercedes-Benz",
+    vw: "Volkswagen"
+  };
+  return aliases[key] || value;
+}
+
+function normalizeRockAutoModel(make, model) {
+  const normalizedMake = normalizeRockAutoMake(make).toLowerCase();
+  const value = String(model || "").trim();
+  const key = value.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ");
+
+  if (normalizedMake === "honda" && key === "del sol") return "Civic Del Sol";
+
+  if (normalizedMake === "ford") {
+    const truckMatch = key.match(/^(f|e)\s*-?\s*(\d{3})$/);
+    if (truckMatch) return `${truckMatch[1].toUpperCase()}-${truckMatch[2]}`;
+  }
+
+  return value;
+}
+
+function rockAutoCatalogVehicle(vehicle) {
+  if (!vehicle) return null;
+  return {
+    year: String(vehicle.year || "").trim(),
+    make: normalizeRockAutoMake(vehicle.make),
+    model: normalizeRockAutoModel(vehicle.make, vehicle.model)
+  };
+}
+
+function rockAutoPathToken(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "+");
+}
+
 function rockAutoCatalogUrl(vehicle) {
-  const year = String(vehicle?.year || "").trim();
-  const make = String(vehicle?.make || "").trim();
-  const model = String(vehicle?.model || "").trim();
-  if (!year || !make || !model) return "";
-  return `${ROCKAUTO_CATALOG_BASE_URL}/${encodeURIComponent(`${make},${year},${model}`.toLowerCase())}`;
+  const catalogVehicle = rockAutoCatalogVehicle(vehicle);
+  if (!catalogVehicle?.year || !catalogVehicle.make || !catalogVehicle.model) return "";
+  const path = [
+    catalogVehicle.make,
+    catalogVehicle.year,
+    catalogVehicle.model
+  ].map(rockAutoPathToken).join(",");
+  return `${ROCKAUTO_CATALOG_BASE_URL}/${encodeURIComponent(path)}`;
+}
+
+function rockAutoCatalogLabel(vehicle) {
+  const catalogVehicle = rockAutoCatalogVehicle(vehicle);
+  if (!catalogVehicle?.year || !catalogVehicle.make || !catalogVehicle.model) return "";
+  return `${catalogVehicle.year} ${catalogVehicle.make} ${catalogVehicle.model}`;
 }
 
 function setView(viewName) {
@@ -308,9 +356,10 @@ function renderRockAutoLookup() {
   if (!container) return;
   const vehicle = selectedPartsVehicle();
   const catalogUrl = rockAutoCatalogUrl(vehicle);
+  const catalogLabel = rockAutoCatalogLabel(vehicle);
   container.innerHTML = catalogUrl ? `
     <a class="secondary external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>
-    <span class="muted">${escapeHtml(vehicle.year)} ${escapeHtml(vehicle.make)} ${escapeHtml(vehicle.model)}</span>
+    <span class="muted">${escapeHtml(catalogLabel)}</span>
   ` : "";
 }
 
