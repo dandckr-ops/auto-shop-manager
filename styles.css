@@ -711,9 +711,7 @@ textarea {
 }
 
 .print-table th:nth-child(2),
-.print-table th:nth-child(3),
-.print-table td:nth-child(2),
-.print-table td:nth-child(3) {
+.print-table td:nth-child(2) {
   text-align: right;
 }
 

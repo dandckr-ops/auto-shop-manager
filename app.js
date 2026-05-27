@@ -11,6 +11,9 @@ const ROCKAUTO_PART_SEARCH_URL = "https://www.rockauto.com/en/partsearch/";
 const MANUAL_MODEL_VALUE = "__manual_model__";
 const VIN_BARCODE_FORMATS = ["code_39", "code_128", "data_matrix", "qr_code", "pdf417"];
 const TAX_RATE = 0.08125;
+const SHOP_SUPPLIES_RATE = 0.05;
+const SHOP_SUPPLIES_CAP = 35;
+const SHOP_SUPPLIES_DESCRIPTION = "Shop supplies";
 const ORDER_STATUSES = [
   "estimate created",
   "estimate sent",
@@ -1045,11 +1048,10 @@ function printLineRows(lines) {
     ? lines.map((line) => `
       <tr>
         <td>${escapeHtml(line.description || "Line item")}</td>
-        <td>${Number(line.qty) || 0}</td>
         <td>${money((Number(line.qty) || 0) * (Number(line.rate) || 0))}</td>
       </tr>
     `).join("")
-    : `<tr><td colspan="3" class="muted">None</td></tr>`;
+    : `<tr><td colspan="2" class="muted">None</td></tr>`;
 }
 
 function updatePrintEstimate() {
@@ -1084,14 +1086,14 @@ function updatePrintEstimate() {
     <section>
       <h2>Labor</h2>
       <table class="print-table">
-        <thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
+        <thead><tr><th>Description</th><th>Amount</th></tr></thead>
         <tbody>${printLineRows(labor)}</tbody>
       </table>
     </section>
     <section>
       <h2>Parts</h2>
       <table class="print-table">
-        <thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
+        <thead><tr><th>Description</th><th>Amount</th></tr></thead>
         <tbody>${printLineRows(parts)}</tbody>
       </table>
     </section>
@@ -1101,6 +1103,48 @@ function updatePrintEstimate() {
       <span>Total <strong>${money(total.total)}</strong></span>
     </div>
   `;
+}
+
+function laborSubtotal() {
+  return readLines("#laborLines")
+    .reduce((sum, line) => sum + (Number(line.qty) || 0) * (Number(line.rate) || 0), 0);
+}
+
+function findReusablePartLine() {
+  return [...document.querySelectorAll("#partLines .line-row")].find((row) => {
+    const description = row.querySelector(".line-description").value.trim();
+    const rate = Number(row.querySelector(".line-rate").value) || 0;
+    return !description && rate === 0;
+  });
+}
+
+function applyShopSupplies() {
+  const base = laborSubtotal();
+  if (base <= 0) {
+    alert("Add labor before calculating shop supplies.");
+    return;
+  }
+
+  const amount = roundCurrency(Math.min(base * SHOP_SUPPLIES_RATE, SHOP_SUPPLIES_CAP));
+  const rows = [...document.querySelectorAll("#partLines .line-row")];
+  const existing = rows.find((row) =>
+    row.querySelector(".line-description").value.trim().toLowerCase() === SHOP_SUPPLIES_DESCRIPTION.toLowerCase()
+  );
+  const row = existing || findReusablePartLine();
+
+  if (row) {
+    row.querySelector(".line-description").value = SHOP_SUPPLIES_DESCRIPTION;
+    row.querySelector(".line-qty").value = 1;
+    row.querySelector(".line-rate").value = amount;
+    updateTotals();
+    return;
+  }
+
+  addLine("part", {
+    description: SHOP_SUPPLIES_DESCRIPTION,
+    qty: 1,
+    rate: amount
+  });
 }
 
 function retailPrice(cost) {
@@ -1548,6 +1592,7 @@ document.querySelector("#orderConcern").addEventListener("input", updatePrintEst
 document.querySelector("#orderFilter").addEventListener("change", renderOrders);
 document.querySelector("#addLaborLine").addEventListener("click", () => addLine("labor"));
 document.querySelector("#addPartLine").addEventListener("click", () => addLine("part"));
+document.querySelector("#applyShopSupplies").addEventListener("click", applyShopSupplies);
 document.querySelector("#lookupPartsForCurrentOrder").addEventListener("click", openPartsLookupForCurrentForm);
 document.querySelector("#closePartsLookup").addEventListener("click", closePartsLookupDialog);
 document.querySelector("#manualPartForm").addEventListener("submit", addManualPartToEstimate);
