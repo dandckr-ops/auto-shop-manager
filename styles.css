@@ -275,6 +275,10 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.field-wide {
+  grid-column: 1 / -1;
+}
+
 .stat-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -451,6 +455,18 @@ textarea {
   color: var(--muted);
   display: grid;
   gap: 4px;
+}
+
+.vehicle-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.vehicle-summary {
+  min-width: 220px;
 }
 
 .source-tag {

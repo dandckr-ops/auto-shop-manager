@@ -196,6 +196,7 @@ def init_db() -> None:
         conn.execute("alter table vehicles add column if not exists source text not null default ''")
         conn.execute("alter table vehicles add column if not exists plate text not null default ''")
         conn.execute("alter table vehicles add column if not exists plate_state text not null default ''")
+        conn.execute("alter table vehicles add column if not exists rockauto_url text not null default ''")
         conn.execute("alter table repair_orders alter column status set default 'estimate created'")
         migrate_order_statuses(conn)
         seed_parts_providers(conn)
@@ -632,7 +633,7 @@ def get_state() -> dict:
         ).fetchall()
         vehicles = conn.execute(
             """
-            select id, customer_id, year, make, model, engine, vin, trim, body, source, plate, plate_state
+            select id, customer_id, year, make, model, engine, vin, trim, body, source, plate, plate_state, rockauto_url
             from vehicles
             order by year desc, make, model
             """
@@ -662,6 +663,7 @@ def get_state() -> dict:
                 "source": row[9],
                 "plate": row[10],
                 "plateState": row[11],
+                "rockAutoUrl": row[12],
             }
         )
 
@@ -929,9 +931,9 @@ def write_state(data: dict, existing_conn=None) -> None:
                 conn.execute(
                     """
                     insert into vehicles (
-                        id, customer_id, year, make, model, engine, vin, trim, body, source, plate, plate_state
+                        id, customer_id, year, make, model, engine, vin, trim, body, source, plate, plate_state, rockauto_url
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         vehicle.get("id") or str(uuid.uuid4()),
@@ -946,6 +948,7 @@ def write_state(data: dict, existing_conn=None) -> None:
                         vehicle.get("source") or "",
                         vehicle.get("plate") or "",
                         vehicle.get("plateState") or vehicle.get("plate_state") or "",
+                        vehicle.get("rockAutoUrl") or vehicle.get("rockauto_url") or "",
                     ),
                 )
 

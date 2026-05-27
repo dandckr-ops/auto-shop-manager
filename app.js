@@ -55,7 +55,8 @@ const starterData = {
           engine: "5.0L",
           vin: "",
           plate: "",
-          plateState: ""
+          plateState: "",
+          rockAutoUrl: ""
         }
       ]
     }
@@ -149,7 +150,13 @@ function normalizeOrderStatus(status) {
 
 function normalizeState(data) {
   const normalized = data || structuredClone(starterData);
-  normalized.customers = normalized.customers || [];
+  normalized.customers = (normalized.customers || []).map((customer) => ({
+    ...customer,
+    vehicles: (customer.vehicles || []).map((vehicle) => ({
+      ...vehicle,
+      rockAutoUrl: vehicle.rockAutoUrl || vehicle.rockauto_url || ""
+    }))
+  }));
   normalized.orders = (normalized.orders || []).map((order) => ({
     ...order,
     status: normalizeOrderStatus(order.status)
@@ -188,6 +195,14 @@ function allVehicles() {
       customerName: customer.name
     }))
   );
+}
+
+function findStoredVehicleById(vehicleId) {
+  for (const customer of state.customers) {
+    const vehicle = (customer.vehicles || []).find((entry) => entry.id === vehicleId);
+    if (vehicle) return vehicle;
+  }
+  return null;
 }
 
 function vehicleLabel(vehicle) {
@@ -230,25 +245,31 @@ function rockAutoCatalogVehicle(vehicle) {
   };
 }
 
-function rockAutoPathToken(value) {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, "+");
+function isRockAutoUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    const host = url.hostname.toLowerCase();
+    return host === "rockauto.com" || host.endsWith(".rockauto.com");
+  } catch {
+    return false;
+  }
+}
+
+function savedRockAutoUrl(vehicle) {
+  const url = String(vehicle?.rockAutoUrl || vehicle?.rockauto_url || "").trim();
+  return url && isRockAutoUrl(url) ? url : "";
 }
 
 function rockAutoCatalogUrl(vehicle) {
-  const catalogVehicle = rockAutoCatalogVehicle(vehicle);
-  if (!catalogVehicle?.year || !catalogVehicle.make || !catalogVehicle.model) return "";
-  const path = [
-    catalogVehicle.make,
-    catalogVehicle.year,
-    catalogVehicle.model
-  ].map(rockAutoPathToken).join(",");
-  return `${ROCKAUTO_CATALOG_BASE_URL}/${encodeURIComponent(path)}`;
+  return savedRockAutoUrl(vehicle);
 }
 
 function rockAutoCatalogLabel(vehicle) {
+  if (!vehicle) return "";
+  if (savedRockAutoUrl(vehicle)) return `Saved RockAuto vehicle: ${vehicleLabel(vehicle)}`;
   const catalogVehicle = rockAutoCatalogVehicle(vehicle);
   if (!catalogVehicle?.year || !catalogVehicle.make || !catalogVehicle.model) return "";
-  return `${catalogVehicle.year} ${catalogVehicle.make} ${catalogVehicle.model}`;
+  return `Exact RockAuto URL not saved for ${catalogVehicle.year} ${catalogVehicle.make} ${catalogVehicle.model}.`;
 }
 
 function setView(viewName) {
@@ -385,16 +406,21 @@ function renderRockAutoLookup() {
   const container = document.querySelector("#rockAutoLookup");
   if (!container) return;
   const vehicle = selectedPartsVehicle();
+  if (!vehicle) {
+    container.innerHTML = "";
+    return;
+  }
   const catalogUrl = rockAutoCatalogUrl(vehicle);
   const catalogLabel = rockAutoCatalogLabel(vehicle);
-  container.innerHTML = catalogUrl ? `
-    <a class="secondary external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>
+  container.innerHTML = `
+    <a class="secondary external-button" href="${escapeHtml(catalogUrl || ROCKAUTO_CATALOG_BASE_URL)}" target="_blank" rel="noopener noreferrer">${catalogUrl ? "Open saved RockAuto" : "Open RockAuto"}</a>
+    <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">${catalogUrl ? "Edit RockAuto URL" : "Save exact URL"}</button>
     <span class="muted">${escapeHtml(catalogLabel)}</span>
-  ` : "";
+  `;
 }
 
 function providerSummary(provider) {
-  if (provider.key === "rockauto") return "Select a vehicle below to open the matching RockAuto catalog.";
+  if (provider.key === "rockauto") return "Save an exact RockAuto vehicle URL once, then reopen that catalog from here.";
   if (provider.key === "manual") return "Use for phone quotes, walk-ins, and one-off vendors.";
   return provider.enabled ? "Configured" : "Needs credentials";
 }
@@ -402,11 +428,15 @@ function providerSummary(provider) {
 function renderProviderAction(provider) {
   if (provider.key !== "rockauto") return "";
   const vehicle = selectedPartsVehicle();
+  if (!vehicle) {
+    return `<div class="item-actions"><button type="button" class="secondary small" disabled>Select vehicle below</button></div>`;
+  }
   const catalogUrl = rockAutoCatalogUrl(vehicle);
   return `<div class="item-actions">
     ${catalogUrl
-      ? `<a class="secondary small external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>`
-      : `<button type="button" class="secondary small" disabled>Select vehicle below</button>`}
+      ? `<a class="secondary small external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open saved RockAuto</a>`
+      : `<a class="secondary small external-button" href="${ROCKAUTO_CATALOG_BASE_URL}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>`}
+    <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">${catalogUrl ? "Edit URL" : "Save exact URL"}</button>
   </div>`;
 }
 
@@ -448,13 +478,17 @@ function renderCustomers() {
       <span class="muted">${escapeHtml(customer.phone || "No phone")} ${customer.email ? `- ${escapeHtml(customer.email)}` : ""}</span>
       <div class="vehicle-list">
         ${(customer.vehicles || []).map((vehicle) => `
-          <span>
-            ${escapeHtml(vehicleLabel(vehicle))}
-            ${vehicle.body ? `- ${escapeHtml(vehicle.body)}` : ""}
-            ${vehicle.plate ? `- ${escapeHtml([vehicle.plateState, vehicle.plate].filter(Boolean).join(" "))}` : ""}
-            ${vehicle.vin ? `- VIN ${escapeHtml(vehicle.vin)}` : ""}
-            ${vehicle.source ? `<small class="source-tag">${escapeHtml(vehicle.source)}</small>` : ""}
-          </span>
+          <div class="vehicle-row">
+            <span class="vehicle-summary">
+              ${escapeHtml(vehicleLabel(vehicle))}
+              ${vehicle.body ? `- ${escapeHtml(vehicle.body)}` : ""}
+              ${vehicle.plate ? `- ${escapeHtml([vehicle.plateState, vehicle.plate].filter(Boolean).join(" "))}` : ""}
+              ${vehicle.vin ? `- VIN ${escapeHtml(vehicle.vin)}` : ""}
+              ${vehicle.source ? `<small class="source-tag">${escapeHtml(vehicle.source)}</small>` : ""}
+              ${savedRockAutoUrl(vehicle) ? `<small class="source-tag">RockAuto saved</small>` : ""}
+            </span>
+            <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">RockAuto URL</button>
+          </div>
         `).join("") || "<span>No vehicles yet</span>"}
       </div>
       <div class="item-actions">
@@ -704,6 +738,7 @@ function vehicleFromForm() {
     vin: document.querySelector("#vehicleVin").value.trim().toUpperCase(),
     plate: document.querySelector("#vehiclePlate").value.trim().toUpperCase(),
     plateState: document.querySelector("#vehiclePlateState").value.trim().toUpperCase(),
+    rockAutoUrl: document.querySelector("#vehicleRockAutoUrl").value.trim(),
     source: document.querySelector("#vehicleLookupStatus").dataset.source || ""
   };
 }
@@ -1097,6 +1132,24 @@ function openPartsLookupForCurrentForm() {
   refreshPartsLookupLinks();
 }
 
+async function setRockAutoUrl(vehicleId) {
+  const vehicle = findStoredVehicleById(vehicleId);
+  if (!vehicle) return;
+  const nextUrl = prompt(
+    "Paste the full RockAuto URL after choosing the correct year, make, model, and engine. Leave it blank to clear the saved URL.",
+    vehicle.rockAutoUrl || ""
+  );
+  if (nextUrl === null) return;
+  const trimmed = nextUrl.trim();
+  if (trimmed && !isRockAutoUrl(trimmed)) {
+    alert("That does not look like a RockAuto URL.");
+    return;
+  }
+  vehicle.rockAutoUrl = trimmed;
+  await saveState();
+  render();
+}
+
 function handleListClick(event) {
   const control = event.target.closest("[data-action]");
   if (!control) return;
@@ -1111,6 +1164,9 @@ function handleListClick(event) {
   }
   if (action === "start-order") {
     startOrderForCustomer(id);
+  }
+  if (action === "set-rockauto-url") {
+    setRockAutoUrl(id);
   }
   if (action === "edit-order") {
     fillOrderForm(state.orders.find((order) => order.id === id));
