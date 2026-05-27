@@ -691,6 +691,16 @@ textarea {
   margin: -2px 0 12px;
 }
 
+.search-query {
+  background: #f7fafb;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
 .external-lookup:empty {
   display: none;
 }

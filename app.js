@@ -7,6 +7,7 @@ const API_VEHICLE_MODELS_URL = "/api/vehicles/models";
 const API_AUTH_ME_URL = "/api/auth/me";
 const API_AUTH_SETTINGS_URL = "/api/auth/settings";
 const ROCKAUTO_CATALOG_BASE_URL = "https://www.rockauto.com/en/catalog";
+const ROCKAUTO_PART_SEARCH_URL = "https://www.rockauto.com/en/partsearch/";
 const MANUAL_MODEL_VALUE = "__manual_model__";
 const VIN_BARCODE_FORMATS = ["code_39", "code_128", "data_matrix", "qr_code", "pdf417"];
 const TAX_RATE = 0.08125;
@@ -36,6 +37,15 @@ const STATUS_STYLE_MAP = {
   "ready to be completed": "status-ready",
   "work done": "status-done",
   "paid/close": "status-closed"
+};
+const ROCKAUTO_PART_TERMS = {
+  "Brake Pads": "brake pad",
+  Rotor: "rotor",
+  "Oil Filter": "oil filter",
+  "Air Filter": "air filter",
+  Battery: "battery",
+  Alternator: "alternator",
+  Starter: "starter"
 };
 
 const starterData = {
@@ -272,6 +282,30 @@ function rockAutoCatalogLabel(vehicle) {
   return `Exact RockAuto URL not saved for ${catalogVehicle.year} ${catalogVehicle.make} ${catalogVehicle.model}.`;
 }
 
+function rockAutoSearchTerm() {
+  const category = document.querySelector("#partsCategory")?.value || "";
+  const keyword = document.querySelector("#partsKeyword")?.value.trim() || "";
+  return [ROCKAUTO_PART_TERMS[category] || category, keyword].filter(Boolean).join(" ");
+}
+
+function rockAutoVehicleSearchQuery(vehicle) {
+  if (!vehicle) return "";
+  const catalogVehicle = rockAutoCatalogVehicle(vehicle);
+  const vehicleTerm = [
+    catalogVehicle?.year,
+    catalogVehicle?.make,
+    catalogVehicle?.model,
+    vehicle.engine
+  ].filter(Boolean).join(" ");
+  return [vehicleTerm, rockAutoSearchTerm()].filter(Boolean).join(" ");
+}
+
+function rockAutoPartSearchUrl(vehicle) {
+  const query = rockAutoVehicleSearchQuery(vehicle);
+  if (!query) return "";
+  return `${ROCKAUTO_PART_SEARCH_URL}?partnum=${encodeURIComponent(query)}`;
+}
+
 function setView(viewName) {
   currentView = viewName;
   Object.entries(views).forEach(([name, view]) => {
@@ -412,10 +446,14 @@ function renderRockAutoLookup() {
   }
   const catalogUrl = rockAutoCatalogUrl(vehicle);
   const catalogLabel = rockAutoCatalogLabel(vehicle);
+  const searchQuery = rockAutoVehicleSearchQuery(vehicle);
+  const searchUrl = rockAutoPartSearchUrl(vehicle);
   container.innerHTML = `
     <a class="secondary external-button" href="${escapeHtml(catalogUrl || ROCKAUTO_CATALOG_BASE_URL)}" target="_blank" rel="noopener noreferrer">${catalogUrl ? "Open saved RockAuto" : "Open RockAuto"}</a>
+    ${searchUrl ? `<a class="secondary external-button" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer">Search RockAuto near match</a>` : ""}
     <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">${catalogUrl ? "Edit RockAuto URL" : "Save exact URL"}</button>
     <span class="muted">${escapeHtml(catalogLabel)}</span>
+    ${searchQuery ? `<span class="search-query">Query: ${escapeHtml(searchQuery)}</span>` : ""}
   `;
 }
 
@@ -432,10 +470,12 @@ function renderProviderAction(provider) {
     return `<div class="item-actions"><button type="button" class="secondary small" disabled>Select vehicle below</button></div>`;
   }
   const catalogUrl = rockAutoCatalogUrl(vehicle);
+  const searchUrl = rockAutoPartSearchUrl(vehicle);
   return `<div class="item-actions">
     ${catalogUrl
       ? `<a class="secondary small external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open saved RockAuto</a>`
       : `<a class="secondary small external-button" href="${ROCKAUTO_CATALOG_BASE_URL}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>`}
+    ${searchUrl ? `<a class="secondary small external-button" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer">Near search</a>` : ""}
     <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">${catalogUrl ? "Edit URL" : "Save exact URL"}</button>
   </div>`;
 }
@@ -1365,6 +1405,8 @@ document.querySelector("#deleteCurrentOrder").addEventListener("click", () => {
 });
 document.querySelector("#partsSearchForm").addEventListener("submit", searchParts);
 document.querySelector("#partsVehicle").addEventListener("change", refreshPartsLookupLinks);
+document.querySelector("#partsCategory").addEventListener("change", refreshPartsLookupLinks);
+document.querySelector("#partsKeyword").addEventListener("input", refreshPartsLookupLinks);
 document.querySelector("#partsTargetOrder").addEventListener("change", (event) => {
   const order = state.orders.find((entry) => entry.id === event.target.value);
   if (order?.vehicleId) {
