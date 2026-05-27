@@ -103,7 +103,7 @@ const views = {
   },
   parts: {
     title: "Parts",
-    subtitle: "Compare supplier quotes and track orders.",
+    subtitle: "Track ordered, waiting, and received parts.",
     el: document.querySelector("#partsView")
   },
   settings: {
@@ -422,8 +422,7 @@ function renderPartsTargetOptions() {
   const select = document.querySelector("#partsTargetOrder");
   if (!select) return;
   const previous = select.value;
-  const openOrders = state.orders.filter((order) => !isClosedOrder(order));
-  select.innerHTML = `<option value="">Do not add to estimate</option>` + openOrders.map((order) => {
+  select.innerHTML = `<option value="">Do not add to estimate</option>` + state.orders.map((order) => {
     const customer = state.customers.find((entry) => entry.id === order.customerId);
     const vehicle = allVehicles().find((entry) => entry.id === order.vehicleId);
     const label = `${customer?.name || "Unknown"} - ${vehicleLabel(vehicle)} - ${order.status}`;
@@ -464,20 +463,7 @@ function providerSummary(provider) {
 }
 
 function renderProviderAction(provider) {
-  if (provider.key !== "rockauto") return "";
-  const vehicle = selectedPartsVehicle();
-  if (!vehicle) {
-    return `<div class="item-actions"><button type="button" class="secondary small" disabled>Select vehicle below</button></div>`;
-  }
-  const catalogUrl = rockAutoCatalogUrl(vehicle);
-  const searchUrl = rockAutoPartSearchUrl(vehicle);
-  return `<div class="item-actions">
-    ${catalogUrl
-      ? `<a class="secondary small external-button" href="${escapeHtml(catalogUrl)}" target="_blank" rel="noopener noreferrer">Open saved RockAuto</a>`
-      : `<a class="secondary small external-button" href="${ROCKAUTO_CATALOG_BASE_URL}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>`}
-    ${searchUrl ? `<a class="secondary small external-button" href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener noreferrer">Near search</a>` : ""}
-    <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">${catalogUrl ? "Edit URL" : "Save exact URL"}</button>
-  </div>`;
+  return "";
 }
 
 function renderPartsProviders() {
@@ -1140,6 +1126,120 @@ function localPartsSearch({ vehicleId, category, keyword }) {
   });
 }
 
+function partLineDescription({ partName, supplier, partNumber }) {
+  const details = [supplier, partNumber].filter(Boolean).join(" ");
+  return details ? `${partName} (${details})` : partName;
+}
+
+async function addPartLineToEstimate(orderId, line) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (!order) return false;
+  order.parts = order.parts || [];
+  order.parts.push(line);
+  order.updatedAt = new Date().toISOString();
+
+  if (document.querySelector("#orderId").value === orderId) {
+    addLine("part", line);
+  }
+
+  await saveState();
+  renderDashboard();
+  renderOrders();
+  renderPartsTargetOptions();
+  updateTotals();
+  return true;
+}
+
+function setManualPartStatus(message, isError = false) {
+  const status = document.querySelector("#manualPartStatus");
+  status.textContent = message || "";
+  status.classList.toggle("error-text", isError);
+}
+
+async function addManualPartToEstimate(event) {
+  event.preventDefault();
+  const orderId = document.querySelector("#partsTargetOrder").value;
+  const partName = document.querySelector("#manualPartDescription").value.trim();
+  const supplier = document.querySelector("#manualPartSupplier").value.trim();
+  const partNumber = document.querySelector("#manualPartNumber").value.trim();
+  const retail = Number(document.querySelector("#manualPartRetail").value) || 0;
+
+  if (!orderId) {
+    setManualPartStatus("Choose an estimate first.", true);
+    return;
+  }
+  if (!partName) {
+    setManualPartStatus("Enter a part description.", true);
+    return;
+  }
+
+  const added = await addPartLineToEstimate(orderId, {
+    description: partLineDescription({ partName, supplier, partNumber }),
+    qty: 1,
+    rate: retail
+  });
+  if (!added) {
+    setManualPartStatus("Estimate not found.", true);
+    return;
+  }
+  document.querySelector("#manualPartForm").reset();
+  document.querySelector("#manualPartSupplier").value = supplier || "RockAuto";
+  setManualPartStatus("Part added to estimate.");
+}
+
+function closePartsLookupDialog() {
+  const dialog = document.querySelector("#partsLookupDialog");
+  if (typeof dialog.close === "function") {
+    dialog.close();
+  } else {
+    dialog.removeAttribute("open");
+  }
+}
+
+function openPartsLookupDialog(orderId) {
+  const order = state.orders.find((entry) => entry.id === orderId);
+  if (!order) return;
+  const customer = state.customers.find((entry) => entry.id === order.customerId);
+  const vehicle = allVehicles().find((entry) => entry.id === order.vehicleId);
+  renderVehicleOptions();
+  renderPartsTargetOptions();
+  document.querySelector("#partsTargetOrder").value = order.id;
+  document.querySelector("#partsVehicle").value = order.vehicleId || "";
+  document.querySelector("#partsLookupContext").textContent = `${customer?.name || "Unknown customer"} - ${vehicleLabel(vehicle)} - ${normalizeOrderStatus(order.status)}`;
+  document.querySelector("#partsResults").innerHTML = "";
+  document.querySelector("#manualPartForm").reset();
+  document.querySelector("#manualPartSupplier").value = "RockAuto";
+  setManualPartStatus("");
+  refreshPartsLookupLinks();
+  const dialog = document.querySelector("#partsLookupDialog");
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+}
+
+async function saveCurrentOrderForPartsLookup() {
+  const order = orderFromForm();
+  if (!order.customerId) {
+    alert("Choose a customer before finding parts.");
+    return "";
+  }
+
+  const index = state.orders.findIndex((entry) => entry.id === order.id);
+  if (index >= 0) {
+    state.orders[index] = order;
+  } else {
+    state.orders.unshift(order);
+  }
+  document.querySelector("#orderId").value = order.id;
+  await saveState();
+  updateCurrentOrderActions();
+  renderDashboard();
+  renderOrders();
+  return order.id;
+}
+
 function startOrderForCustomer(customerId) {
   clearOrderForm();
   document.querySelector("#orderCustomer").value = customerId;
@@ -1154,22 +1254,12 @@ function startOrderForCustomer(customerId) {
 function openPartsLookupForOrder(orderId) {
   const order = state.orders.find((entry) => entry.id === orderId);
   if (!order) return;
-  setView("parts");
-  document.querySelector("#partsTargetOrder").value = order.id;
-  document.querySelector("#partsVehicle").value = order.vehicleId || "";
-  refreshPartsLookupLinks();
+  openPartsLookupDialog(order.id);
 }
 
-function openPartsLookupForCurrentForm() {
-  const orderId = document.querySelector("#orderId").value;
-  if (orderId) {
-    openPartsLookupForOrder(orderId);
-    return;
-  }
-  setView("parts");
-  document.querySelector("#partsTargetOrder").value = "";
-  document.querySelector("#partsVehicle").value = document.querySelector("#orderVehicle").value || "";
-  refreshPartsLookupLinks();
+async function openPartsLookupForCurrentForm() {
+  const orderId = await saveCurrentOrderForPartsLookup();
+  if (orderId) openPartsLookupDialog(orderId);
 }
 
 async function setRockAutoUrl(vehicleId) {
@@ -1190,7 +1280,7 @@ async function setRockAutoUrl(vehicleId) {
   render();
 }
 
-function handleListClick(event) {
+async function handleListClick(event) {
   const control = event.target.closest("[data-action]");
   if (!control) return;
   event.preventDefault();
@@ -1255,15 +1345,17 @@ function handleListClick(event) {
   if (action === "add-quote-to-order") {
     const order = state.orders.find((entry) => entry.id === control.dataset.orderId);
     if (!order) return;
-    order.parts = order.parts || [];
-    order.parts.push({
-      description: `${control.dataset.part} (${control.dataset.supplier} ${control.dataset.number})`,
+    await addPartLineToEstimate(order.id, {
+      description: partLineDescription({
+        partName: control.dataset.part,
+        supplier: control.dataset.supplier,
+        partNumber: control.dataset.number
+      }),
       qty: 1,
       rate: Number(control.dataset.retail) || 0
     });
-    order.updatedAt = new Date().toISOString();
-    saveState();
-    render();
+    control.textContent = "Added";
+    control.disabled = true;
   }
 }
 
@@ -1386,6 +1478,8 @@ document.querySelector("#orderFilter").addEventListener("change", renderOrders);
 document.querySelector("#addLaborLine").addEventListener("click", () => addLine("labor"));
 document.querySelector("#addPartLine").addEventListener("click", () => addLine("part"));
 document.querySelector("#lookupPartsForCurrentOrder").addEventListener("click", openPartsLookupForCurrentForm);
+document.querySelector("#closePartsLookup").addEventListener("click", closePartsLookupDialog);
+document.querySelector("#manualPartForm").addEventListener("submit", addManualPartToEstimate);
 
 document.querySelector("#orderForm").addEventListener("submit", (event) => {
   event.preventDefault();

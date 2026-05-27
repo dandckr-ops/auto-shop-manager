@@ -488,6 +488,11 @@ textarea {
   width: 640px;
 }
 
+.wide-dialog {
+  max-width: min(980px, calc(100vw - 28px));
+  width: 980px;
+}
+
 .dialog::backdrop {
   background: rgba(23, 32, 39, 0.42);
 }
@@ -498,6 +503,30 @@ textarea {
   border-radius: 8px;
   box-shadow: 0 22px 60px rgba(23, 32, 39, 0.22);
   padding: 18px;
+}
+
+.parts-lookup-panel {
+  display: grid;
+  gap: 16px;
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+}
+
+.parts-lookup-form,
+.manual-part-form,
+.parts-results-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.parts-lookup-form {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.manual-part-form h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
 }
 
 .form-status {

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-9">
+    <link rel="stylesheet" href="styles.css?v=20260526-10">
   </head>
   <body>
     <div class="app-shell">
@@ -140,42 +140,6 @@
         <section id="partsView" class="view">
           <div class="panel">
             <div class="panel-header">
-              <h2>Parts Providers</h2>
-              <span class="muted">Staged integrations</span>
-            </div>
-            <div id="partsProviders" class="provider-grid"></div>
-          </div>
-
-          <div class="parts-layout">
-            <form id="partsSearchForm" class="panel form-panel">
-              <h2>Parts Lookup</h2>
-              <label>Vehicle<select id="partsVehicle"></select></label>
-              <div id="rockAutoLookup" class="external-lookup"></div>
-              <label>Category<select id="partsCategory">
-                <option>Brake Pads</option>
-                <option>Rotor</option>
-                <option>Oil Filter</option>
-                <option>Air Filter</option>
-                <option>Battery</option>
-                <option>Alternator</option>
-                <option>Starter</option>
-              </select></label>
-              <label>Part number / keyword<input id="partsKeyword" placeholder="Optional"></label>
-              <label>Add selected parts to<select id="partsTargetOrder"></select></label>
-              <button class="primary" type="submit">Find Parts</button>
-            </form>
-
-            <div class="panel">
-              <div class="panel-header">
-                <h2>Supplier Quotes</h2>
-                <span class="muted">Mock provider</span>
-              </div>
-              <div id="partsResults" class="quote-grid"></div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
               <h2>Parts Orders</h2>
               <button class="secondary small" id="clearCompletedParts">Clear Completed</button>
             </div>
@@ -207,6 +171,14 @@
           </form>
 
           <div class="panel narrow">
+            <div class="panel-header">
+              <h2>Parts Providers</h2>
+              <span class="muted">Integration setup</span>
+            </div>
+            <div id="partsProviders" class="provider-grid"></div>
+          </div>
+
+          <div class="panel narrow">
             <h2>Backup</h2>
             <p class="muted">Export a JSON backup regularly. Import replaces the local browser copy.</p>
             <div class="backup-actions">
@@ -229,6 +201,61 @@
         <button type="button" class="icon-button remove-line" aria-label="Remove line">x</button>
       </div>
     </template>
+
+    <dialog id="partsLookupDialog" class="dialog wide-dialog">
+      <div class="dialog-panel parts-lookup-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Find Parts</h2>
+            <p id="partsLookupContext" class="muted">Estimate parts lookup</p>
+          </div>
+          <button type="button" class="icon-button" id="closePartsLookup" aria-label="Close">x</button>
+        </div>
+
+        <form id="partsSearchForm" class="parts-lookup-form">
+          <div class="grid-2">
+            <label>Vehicle<select id="partsVehicle"></select></label>
+            <label>Add parts to<select id="partsTargetOrder"></select></label>
+            <label>Category<select id="partsCategory">
+              <option>Brake Pads</option>
+              <option>Rotor</option>
+              <option>Oil Filter</option>
+              <option>Air Filter</option>
+              <option>Battery</option>
+              <option>Alternator</option>
+              <option>Starter</option>
+            </select></label>
+            <label>Part number / keyword<input id="partsKeyword" placeholder="Optional"></label>
+          </div>
+          <div id="rockAutoLookup" class="external-lookup"></div>
+          <div class="form-actions">
+            <button class="primary" type="submit">Search Mock Suppliers</button>
+          </div>
+        </form>
+
+        <form id="manualPartForm" class="manual-part-form">
+          <h3>Add Manual Part</h3>
+          <div class="grid-2">
+            <label>Description<input id="manualPartDescription" placeholder="Brake pads, front"></label>
+            <label>Supplier<input id="manualPartSupplier" placeholder="RockAuto"></label>
+            <label>Part Number<input id="manualPartNumber" autocomplete="off"></label>
+            <label>Retail<input id="manualPartRetail" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          </div>
+          <p id="manualPartStatus" class="form-status muted" aria-live="polite"></p>
+          <div class="form-actions">
+            <button class="secondary" type="submit">Add Manual Part</button>
+          </div>
+        </form>
+
+        <div class="parts-results-panel">
+          <div class="panel-header">
+            <h2>Supplier Quotes</h2>
+            <span class="muted">Mock provider</span>
+          </div>
+          <div id="partsResults" class="quote-grid"></div>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="vehicleDialog" class="dialog">
       <form id="vehicleForm" class="dialog-panel">
@@ -277,6 +304,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-9"></script>
+    <script src="app.js?v=20260526-10"></script>
   </body>
 </html>
