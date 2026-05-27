@@ -516,7 +516,10 @@ function renderCustomers() {
               ${vehicle.source ? `<small class="source-tag">${escapeHtml(vehicle.source)}</small>` : ""}
               ${savedRockAutoUrl(vehicle) ? `<small class="source-tag">RockAuto saved</small>` : ""}
             </span>
-            <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">RockAuto URL</button>
+            <span class="vehicle-actions">
+              ${savedRockAutoUrl(vehicle) ? `<a class="secondary small external-button" href="${escapeHtml(savedRockAutoUrl(vehicle))}" target="_blank" rel="noopener noreferrer">Open RockAuto</a>` : ""}
+              <button type="button" class="secondary small" data-action="set-rockauto-url" data-id="${escapeHtml(vehicle.id)}">${savedRockAutoUrl(vehicle) ? "Edit saved URL" : "Save exact URL"}</button>
+            </span>
           </div>
         `).join("") || "<span>No vehicles yet</span>"}
       </div>
@@ -1370,22 +1373,60 @@ async function openPartsLookupForCurrentForm() {
   if (orderId) openPartsLookupDialog(orderId);
 }
 
-async function setRockAutoUrl(vehicleId) {
+function setRockAutoUrlStatus(message, isError = false) {
+  const status = document.querySelector("#rockAutoUrlStatus");
+  status.textContent = message || "";
+  status.classList.toggle("error-text", isError);
+}
+
+function closeRockAutoUrlDialog() {
+  const dialog = document.querySelector("#rockAutoUrlDialog");
+  if (typeof dialog.close === "function") {
+    dialog.close();
+  } else {
+    dialog.removeAttribute("open");
+  }
+}
+
+function setRockAutoUrl(vehicleId) {
   const vehicle = findStoredVehicleById(vehicleId);
   if (!vehicle) return;
-  const nextUrl = prompt(
-    "Paste the full RockAuto URL after choosing the correct year, make, model, and engine. Leave it blank to clear the saved URL.",
-    vehicle.rockAutoUrl || ""
-  );
-  if (nextUrl === null) return;
-  const trimmed = nextUrl.trim();
+  document.querySelector("#rockAutoVehicleId").value = vehicle.id;
+  document.querySelector("#rockAutoVehicleContext").textContent = vehicleLabel(vehicle);
+  document.querySelector("#rockAutoUrlInput").value = vehicle.rockAutoUrl || "";
+  document.querySelector("#rockAutoCatalogLink").href = savedRockAutoUrl(vehicle) || ROCKAUTO_CATALOG_BASE_URL;
+  setRockAutoUrlStatus("");
+  const dialog = document.querySelector("#rockAutoUrlDialog");
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+}
+
+async function saveRockAutoUrl(event) {
+  event.preventDefault();
+  const vehicle = findStoredVehicleById(document.querySelector("#rockAutoVehicleId").value);
+  if (!vehicle) return;
+  const trimmed = document.querySelector("#rockAutoUrlInput").value.trim();
   if (trimmed && !isRockAutoUrl(trimmed)) {
-    alert("That does not look like a RockAuto URL.");
+    setRockAutoUrlStatus("That does not look like a RockAuto URL.", true);
     return;
   }
   vehicle.rockAutoUrl = trimmed;
   await saveState();
   render();
+  closeRockAutoUrlDialog();
+}
+
+async function clearRockAutoUrl() {
+  const vehicle = findStoredVehicleById(document.querySelector("#rockAutoVehicleId").value);
+  if (!vehicle) return;
+  vehicle.rockAutoUrl = "";
+  document.querySelector("#rockAutoUrlInput").value = "";
+  await saveState();
+  render();
+  closeRockAutoUrlDialog();
 }
 
 async function handleListClick(event) {
@@ -1596,6 +1637,10 @@ document.querySelector("#applyShopSupplies").addEventListener("click", applyShop
 document.querySelector("#lookupPartsForCurrentOrder").addEventListener("click", openPartsLookupForCurrentForm);
 document.querySelector("#closePartsLookup").addEventListener("click", closePartsLookupDialog);
 document.querySelector("#manualPartForm").addEventListener("submit", addManualPartToEstimate);
+document.querySelector("#rockAutoUrlForm").addEventListener("submit", saveRockAutoUrl);
+document.querySelector("#clearRockAutoUrl").addEventListener("click", clearRockAutoUrl);
+document.querySelector("#cancelRockAutoUrl").addEventListener("click", closeRockAutoUrlDialog);
+document.querySelector("#closeRockAutoUrlDialog").addEventListener("click", closeRockAutoUrlDialog);
 
 document.querySelector("#orderForm").addEventListener("submit", (event) => {
   event.preventDefault();

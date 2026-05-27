@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-12">
+    <link rel="stylesheet" href="styles.css?v=20260526-13">
   </head>
   <body>
     <div class="app-shell">
@@ -261,6 +261,28 @@
       </div>
     </dialog>
 
+    <dialog id="rockAutoUrlDialog" class="dialog">
+      <form id="rockAutoUrlForm" class="dialog-panel">
+        <input type="hidden" id="rockAutoVehicleId">
+        <div class="panel-header">
+          <div>
+            <h2>RockAuto Vehicle Link</h2>
+            <p id="rockAutoVehicleContext" class="muted">Save the exact catalog page for this vehicle.</p>
+          </div>
+          <button type="button" class="icon-button" id="closeRockAutoUrlDialog" aria-label="Close">x</button>
+        </div>
+        <label>Exact RockAuto URL<input id="rockAutoUrlInput" type="url" autocomplete="off" placeholder="https://www.rockauto.com/en/catalog/..."></label>
+        <p class="muted">Open RockAuto, choose the correct vehicle and engine, then paste the final catalog URL here.</p>
+        <p id="rockAutoUrlStatus" class="form-status muted" aria-live="polite"></p>
+        <div class="form-actions">
+          <a id="rockAutoCatalogLink" class="secondary external-button" href="https://www.rockauto.com/en/catalog" target="_blank" rel="noopener noreferrer">Open RockAuto</a>
+          <button type="button" class="secondary" id="clearRockAutoUrl">Clear Saved URL</button>
+          <button type="button" class="secondary" id="cancelRockAutoUrl">Cancel</button>
+          <button class="primary" type="submit">Save URL</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="vehicleDialog" class="dialog">
       <form id="vehicleForm" class="dialog-panel">
         <input type="hidden" id="vehicleCustomerId">
@@ -308,6 +330,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-12"></script>
+    <script src="app.js?v=20260526-13"></script>
   </body>
 </html>

@@ -469,6 +469,13 @@ textarea {
   min-width: 220px;
 }
 
+.vehicle-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .source-tag {
   background: #edf1f4;
   border-radius: 999px;
