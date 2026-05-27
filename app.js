@@ -1037,6 +1037,70 @@ function updateTotals() {
   document.querySelector("#subtotalOut").textContent = money(total.subtotal);
   document.querySelector("#taxOut").textContent = money(total.tax);
   document.querySelector("#totalOut").textContent = money(total.total);
+  updatePrintEstimate();
+}
+
+function printLineRows(lines) {
+  return lines.length
+    ? lines.map((line) => `
+      <tr>
+        <td>${escapeHtml(line.description || "Line item")}</td>
+        <td>${Number(line.qty) || 0}</td>
+        <td>${money((Number(line.qty) || 0) * (Number(line.rate) || 0))}</td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="3" class="muted">None</td></tr>`;
+}
+
+function updatePrintEstimate() {
+  const container = document.querySelector("#printEstimate");
+  if (!container) return;
+  const customer = state.customers.find((entry) => entry.id === document.querySelector("#orderCustomer").value);
+  const vehicle = allVehicles().find((entry) => entry.id === document.querySelector("#orderVehicle").value);
+  const labor = readLines("#laborLines");
+  const parts = readLines("#partLines");
+  const total = orderTotal({ labor, parts });
+
+  container.innerHTML = `
+    <div class="print-header">
+      <div>
+        <h1>Estimate</h1>
+        <p>${escapeHtml(new Date().toLocaleDateString())}</p>
+      </div>
+      <div>
+        <strong>Shop Manager</strong>
+        <p>${escapeHtml(normalizeOrderStatus(document.querySelector("#orderStatus").value))}</p>
+      </div>
+    </div>
+    <div class="print-meta">
+      <span><strong>Customer</strong>${escapeHtml(customer?.name || "Customer")}</span>
+      <span><strong>Vehicle</strong>${escapeHtml(vehicleLabel(vehicle))}</span>
+      <span><strong>Odometer</strong>${escapeHtml(document.querySelector("#orderOdometer").value || "Not recorded")}</span>
+    </div>
+    <section>
+      <h2>Requested Work</h2>
+      <p>${escapeHtml(document.querySelector("#orderConcern").value || "Not specified")}</p>
+    </section>
+    <section>
+      <h2>Labor</h2>
+      <table class="print-table">
+        <thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
+        <tbody>${printLineRows(labor)}</tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Parts</h2>
+      <table class="print-table">
+        <thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
+        <tbody>${printLineRows(parts)}</tbody>
+      </table>
+    </section>
+    <div class="print-totals">
+      <span>Subtotal <strong>${money(total.subtotal)}</strong></span>
+      <span>Tax <strong>${money(total.tax)}</strong></span>
+      <span>Total <strong>${money(total.total)}</strong></span>
+    </div>
+  `;
 }
 
 function retailPrice(cost) {
@@ -1473,7 +1537,14 @@ document.querySelector("#closeVehicleDialog").addEventListener("click", closeVeh
 document.querySelector("#vehicleModel").addEventListener("change", toggleManualVehicleModel);
 document.querySelector("#vehicleYear").addEventListener("change", () => loadVehicleModelSuggestions());
 document.querySelector("#vehicleMake").addEventListener("change", () => loadVehicleModelSuggestions());
-document.querySelector("#orderCustomer").addEventListener("change", renderVehicleOptions);
+document.querySelector("#orderCustomer").addEventListener("change", () => {
+  renderVehicleOptions();
+  updatePrintEstimate();
+});
+document.querySelector("#orderVehicle").addEventListener("change", updatePrintEstimate);
+document.querySelector("#orderStatus").addEventListener("change", updatePrintEstimate);
+document.querySelector("#orderOdometer").addEventListener("input", updatePrintEstimate);
+document.querySelector("#orderConcern").addEventListener("input", updatePrintEstimate);
 document.querySelector("#orderFilter").addEventListener("change", renderOrders);
 document.querySelector("#addLaborLine").addEventListener("click", () => addLine("labor"));
 document.querySelector("#addPartLine").addEventListener("click", () => addLine("part"));

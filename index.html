@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto Shop Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-10">
+    <link rel="stylesheet" href="styles.css?v=20260526-11">
   </head>
   <body>
     <div class="app-shell">
@@ -70,6 +70,7 @@
           <div class="order-layout">
             <form id="orderForm" class="panel form-panel">
               <h2>Estimate / Repair Order</h2>
+              <div id="printEstimate" class="print-estimate" aria-hidden="true"></div>
               <input type="hidden" id="orderId">
               <div class="grid-2">
                 <label>Customer<select id="orderCustomer" required></select></label>
@@ -304,6 +305,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=20260526-10"></script>
+    <script src="app.js?v=20260526-11"></script>
   </body>
 </html>

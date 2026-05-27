@@ -663,6 +663,69 @@ textarea {
   justify-content: space-between;
 }
 
+.print-estimate {
+  display: none;
+}
+
+.print-header,
+.print-meta,
+.print-totals {
+  display: grid;
+  gap: 12px;
+}
+
+.print-header {
+  align-items: start;
+  grid-template-columns: 1fr auto;
+}
+
+.print-header h1 {
+  font-size: 32px;
+}
+
+.print-meta {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 18px 0;
+  padding: 12px;
+}
+
+.print-meta span,
+.print-totals span {
+  display: grid;
+  gap: 4px;
+}
+
+.print-table {
+  border-collapse: collapse;
+  margin-bottom: 18px;
+  width: 100%;
+}
+
+.print-table th,
+.print-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0;
+  text-align: left;
+}
+
+.print-table th:nth-child(2),
+.print-table th:nth-child(3),
+.print-table td:nth-child(2),
+.print-table td:nth-child(3) {
+  text-align: right;
+}
+
+.print-totals {
+  margin-left: auto;
+  max-width: 280px;
+}
+
+.print-totals span {
+  grid-template-columns: 1fr auto;
+}
+
 .quote-grid {
   display: grid;
   gap: 12px;
@@ -794,6 +857,8 @@ textarea {
   .nav-button,
   .item-actions,
   .form-actions,
+  #partsLookupDialog,
+  #vehicleDialog,
   .panel:not(.form-panel) {
     display: none;
   }
@@ -804,8 +869,21 @@ textarea {
     display: block;
   }
 
+  #orderForm > :not(.print-estimate) {
+    display: none !important;
+  }
+
+  .print-estimate {
+    color: #000000;
+    display: block;
+  }
+
   .panel {
     border: 0;
     box-shadow: none;
+  }
+
+  .print-meta {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
